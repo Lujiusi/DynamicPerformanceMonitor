@@ -1,0 +1,50 @@
+{
+  "aggregatorFun": [
+    {
+      "aggregatorFunctionType": "computebystep",
+      "aliasName": "loginPageDisplayed_startLogin",
+      "computeColumn": "timestamp",
+      "defaultValue": "-1",
+      "delay": 15,
+      "endStep": "loginPageDisplayed",
+      "filters": {},
+      "groupingKeyNames": [],
+      "operator": "-",
+      "rating": 1,
+      "startStep": "startLogin",
+      "stepColumn": "trace.spanId",
+      "typeName": "聚合计算",
+      "window": 5
+    },
+    {
+      "aggregatorFunctionType": "computebystep",
+      "aliasName": "loginResul_startLogin",
+      "computeColumn": "timestamp",
+      "defaultValue": "-1",
+      "delay": 15,
+      "endStep": "loginResult",
+      "filters": {},
+      "groupingKeyNames": [],
+      "operator": "-",
+      "rating": 1,
+      "startStep": "startLogin",
+      "stepColumn": "trace.spanId",
+      "typeName": "聚合计算",
+      "window": 5
+    }
+  ],
+  "alarmRule": [],
+  "filters": {
+    "type": "selector",
+    "value": "login_page",
+    "key": "eventName",
+    "operator": "="
+  },
+  "postaggregatorFun": [],
+  "ruleID": 1,
+  "ruleState": "active",
+  "transForm": [],
+  "uniqueKey": [
+    "trace.traceId"
+  ]
+}
