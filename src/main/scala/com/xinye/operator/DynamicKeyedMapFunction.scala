@@ -3,28 +3,18 @@ package com.xinye.operator
 import com.xinye.base.Rule
 import com.xinye.config.state.StateDescriptor
 import com.xinye.enums.RuleSateEnum
-import com.xinye.config.RuleGauge
 import com.xinye.operator.pojo.DynamicKey
 import org.apache.flink.api.common.state.ReadOnlyBroadcastState
-import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.functions.co.BroadcastProcessFunction
 import org.apache.flink.util.Collector
 import org.slf4j.{Logger, LoggerFactory}
-
-import scala.collection.mutable.ArrayBuffer
 import java.util.Map
+
+import com.alibaba.fastjson.JSONObject
 
 import scala.collection.JavaConversions._
 
 class DynamicKeyedMapFunction extends BroadcastProcessFunction[java.util.Map[String, String], Rule, (DynamicKey, Map[String, String])] {
-
-  var ruleGauge: RuleGauge = _
-  private val logger: Logger = LoggerFactory.getLogger(classOf[DynamicKeyedMapFunction])
-
-  override def open(parameters: Configuration): Unit = {
-    ruleGauge = new RuleGauge
-    //        getRuntimeContext.getMetricGroup ( ).gauge ( "NumberOfRules", ruleGauge )
-  }
 
   override def processElement(value: java.util.Map[String, String],
                               ctx: BroadcastProcessFunction[java.util.Map[String, String], Rule, (DynamicKey, Map[String, String])]#ReadOnlyContext,
@@ -50,29 +40,36 @@ class DynamicKeyedMapFunction extends BroadcastProcessFunction[java.util.Map[Str
       .foreach { entry => {
         val rule = entry.getValue
         RuleSateEnum.fromString(rule.getRuleState) match {
-          case RuleSateEnum.ACTIVE =>
-            // 和当前 rule 有关的 数据 才会被发送到下游
-            if (rule.getCategory.equalsIgnoreCase(metrics.get("category"))) {
-              import scala.collection.JavaConverters._
-              val uniqueKey = rule.getUniqueKey.asScala.toArray
-              val buffer = new ArrayBuffer[String]()
-              for (i <- uniqueKey.indices) {
-                val tempKey: Option[Any] = DynamicKeyedMapFunction.getUniqueKey(uniqueKey(i), metrics)
-                if (tempKey.isDefined) {
-                  buffer.append(tempKey.get.toString)
-                } else {
-                  logger.warn("{}该数据获取不到对应的key{}", metrics, i)
-                }
-              }
-              if (buffer.nonEmpty) {
-                val dynamicKey: DynamicKey = DynamicKey(rule.getRuleID, buffer.mkString(","))
-                out.collect((dynamicKey, metrics))
-              }
+          case RuleSateEnum.START =>
+            // appName 为空表示所有 或者 appName 包含当前AppName 且满足 字符串的字段
+            if (filter(metrics.get("appName"), rule.getAppName)
+              && filter(metrics.get("env"), rule.getEnv)
+              && filter(metrics, rule.getFilters)
+              && "agent.heartbeat".equals(metrics.get("datasource"))) {
+              val keyJson = new JSONObject()
+              keyJson.put("domain", metrics.get("appName"))
+              //              keyJson.put("datasource", metrics.get("datasource"))
+              out.collect((DynamicKey(rule.getRuleID, keyJson.toJSONString, 0), metrics))
             }
           case _ =>
         }
       }
       }
+  }
+
+  def filter(value: java.util.Map[String, String], filterMap: java.util.Map[String, String]): Boolean = {
+    if (filterMap.size() == 0) {
+      true
+    } else {
+      filterMap
+        .forall(entry => {
+          "*".equals(entry._2) || entry._2.split(",").contains(value.get(entry._1))
+        })
+    }
+  }
+
+  def filter(value: String, range: java.util.List[String]): Boolean = {
+    range.size() == 0 || range.contains(value) || "*".equals(range.head)
   }
 
 }
@@ -85,7 +82,7 @@ object DynamicKeyedMapFunction {
     参数1代表取数字段名
     参数2代表每条数据
  */
-  def getUniqueKey(str: String, metrics: java.util.Map[String, String]): Option[Any] = {
+  def getGroupKey(str: String, metrics: java.util.Map[String, String]): Option[Any] = {
     var result = Option[Any](null)
     if (str != null) {
       if (metrics.containsKey(str)) {

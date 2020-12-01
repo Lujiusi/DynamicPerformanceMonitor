@@ -3,6 +3,7 @@ package com.xinye.base;
 import com.alibaba.fastjson.JSONObject;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author daiwei04@xinye.com
@@ -15,39 +16,67 @@ public class Rule {
 
     private String ruleState;
 
-    //指定分析的类型 是 cpu or jvm
-    private String category;
+    // 对 domain 字段进行过滤
+    private List<String> appName;
 
-    //分组字段的集合
-    private List<String> uniqueKey;
-    private JSONObject filters;
-    private List<TransFormData> transForm;
+    // 对 环境进行过滤
+    private List<String> env;
+
+    public List<String> getAppName() {
+        return appName;
+    }
+
+    public void setAppName(List<String> appName) {
+        this.appName = appName;
+    }
+
+    public List<String> getEnv() {
+        return env;
+    }
+
+    public void setEnv(List<String> env) {
+        this.env = env;
+    }
+
+    public Map<String, String> getFilters() {
+        return filters;
+    }
+
+    public void setFilters(Map<String, String> filters) {
+        this.filters = filters;
+    }
+
+    // 对 host or port 进行过滤
+    private Map<String, String> filters;
+
     private List<AggregatorFun> aggregatorFun;
+
     private List<PostAggregatorFun> postAggregatorFun;
+
     private List<AlarmRule> alarmRule;
 
-    public String getCategory() {
-        return category;
+    public void setRuleID(Integer ruleID) {
+        this.ruleID = ruleID;
     }
 
-    public void setCategory(String category) {
-        this.category = category;
-    }
-
-    public List<PostAggregatorFun> getPostAggregatorFun() {
-        return postAggregatorFun;
+    public void setAggregatorFun(List<AggregatorFun> aggregatorFun) {
+        this.aggregatorFun = aggregatorFun;
     }
 
     public void setPostAggregatorFun(List<PostAggregatorFun> postAggregatorFun) {
         this.postAggregatorFun = postAggregatorFun;
     }
 
-    public Integer getRuleID() {
-        return ruleID;
+    public void setAlarmRule(List<AlarmRule> alarmRule) {
+        this.alarmRule = alarmRule;
     }
 
-    public void setRuleID(Integer ruleID) {
-        this.ruleID = ruleID;
+    public List<PostAggregatorFun> getPostAggregatorFun() {
+        return postAggregatorFun;
+    }
+
+    public Integer getRuleID() {
+        return ruleID;
     }
 
     public String getRuleState() {
@@ -58,44 +87,12 @@ public class Rule {
         this.ruleState = ruleState;
     }
 
-    public List<String> getUniqueKey() {
-        return uniqueKey;
-    }
-
-    public void setUniqueKey(List<String> uniqueKey) {
-        this.uniqueKey = uniqueKey;
-    }
-
-    public JSONObject getFilters() {
-        return filters;
-    }
-
-    public void setFilters(JSONObject filters) {
-        this.filters = filters;
-    }
-
-    public List<TransFormData> getTransForm() {
-        return transForm;
-    }
-
-    public void setTransForm(List<TransFormData> transForm) {
-        this.transForm = transForm;
-    }
-
     public List<AggregatorFun> getAggregatorFun() {
         return aggregatorFun;
     }
 
-    public void setAggregatorFun(List<AggregatorFun> aggregatorFun) {
-        this.aggregatorFun = aggregatorFun;
-    }
-
     public List<AlarmRule> getAlarmRule() {
         return alarmRule;
-    }
-
-    public void setAlarmRule(List<AlarmRule> alarmRule) {
-        this.alarmRule = alarmRule;
     }
 
     @Override
@@ -103,9 +100,7 @@ public class Rule {
         return "Rule{" +
                 "ruleID=" + ruleID +
                 ", ruleState='" + ruleState + '\'' +
-                ", uniqueKey=" + uniqueKey +
                 ", filters=" + filters +
-                ", transForm=" + transForm +
                 ", aggregatorFun=" + aggregatorFun +
                 ", postAggregatorFun=" + postAggregatorFun +
                 ", alarmRule=" + alarmRule +
@@ -162,198 +157,15 @@ public class Rule {
 
     }
 
-    public static class TransFormData {
-        private String key;
-        private String operator;
-        private Object value;
-        private String aliasName;
-
-        @Override
-        public String toString() {
-            return "WashDataFun{" +
-                    "key='" + key + '\'' +
-                    ", operator='" + operator + '\'' +
-                    ", value=" + value +
-                    ", aliasName='" + aliasName + '\'' +
-                    '}';
-        }
-
-        public String getKey() {
-            return key;
-        }
-
-        public void setKey(String key) {
-            this.key = key;
-        }
-
-        public String getOperator() {
-            return operator;
-        }
-
-        public void setOperator(String operator) {
-            this.operator = operator;
-        }
-
-        public Object getValue() {
-            return value;
-        }
-
-        public void setValue(Object value) {
-            this.value = value;
-        }
-
-        public String getAliasName() {
-            return aliasName;
-        }
-
-        public void setAliasName(String aliasName) {
-            this.aliasName = aliasName;
-        }
-    }
-
     public static class AggregatorFun {
-        private String typeName;
-        private List<String> groupingKeyNames;
+
+        private JSONObject filter;
+        private List<String> groupingNames;
         private String aggregatorFunctionType;
         private String computeColumn;
-        private String resultCode;
-        private String defaultValue;
+        private String datasource;
         private Long window;
-        private int rating = 1;
-        private int delay;
         private String aliasName;
-        private String startStep;
-        private String endStep;
-        private String stepColumn;
-        private List<String> distinctColumns;
-        private String operator;
-        private JSONObject filters;
-
-        public String getResultCode() {
-            return resultCode;
-        }
-
-        public void setResultCode(String resultCode) {
-            this.resultCode = resultCode;
-        }
-
-        public String getDefaultValue() {
-            return defaultValue;
-        }
-
-        public void setDefaultValue(String defaultValue) {
-            this.defaultValue = defaultValue;
-        }
-
-        public int getRating() {
-            return rating;
-        }
-
-        public void setRating(int rating) {
-            this.rating = rating;
-        }
-
-        public int getDelay() {
-            return delay;
-        }
-
-        public void setDelay(int delay) {
-            this.delay = delay;
-        }
-
-        public List<String> getDistinctColumns() {
-            return distinctColumns;
-        }
-
-        public void setDistinctColumns(List<String> distinctColumns) {
-            this.distinctColumns = distinctColumns;
-        }
-
-        public String getComputeColumn() {
-            return computeColumn;
-        }
-
-        public String getStartStep() {
-            return startStep;
-        }
-
-        public void setStartStep(String startStep) {
-            this.startStep = startStep;
-        }
-
-        public void setEndStep(String endStep) {
-            this.endStep = endStep;
-        }
-
-        public String getEndStep() {
-            return endStep;
-        }
-
-        public String getStepColumn() {
-            return stepColumn;
-        }
-
-        public void setStepColumn(String stepColumn) {
-            this.stepColumn = stepColumn;
-        }
-
-        public String getOperator() {
-            return operator;
-        }
-
-        @Override
-        public String toString() {
-            return "AggregatorFun{" +
-                    "typeName='" + typeName + '\'' +
-                    ", groupingKeyNames=" + groupingKeyNames +
-                    ", aggregatorFunctionType='" + aggregatorFunctionType + '\'' +
-                    ", computeColumn='" + computeColumn + '\'' +
-                    ", resultCode='" + resultCode + '\'' +
-                    ", defaultValue='" + defaultValue + '\'' +
-                    ", window=" + window +
-                    ", rating=" + rating +
-                    ", delay=" + delay +
-                    ", aliasName='" + aliasName + '\'' +
-                    ", startStep='" + startStep + '\'' +
-                    ", endStep='" + endStep + '\'' +
-                    ", stepColumn='" + stepColumn + '\'' +
-                    ", distinctColumns=" + distinctColumns +
-                    ", operator='" + operator + '\'' +
-                    ", filters=" + filters +
-                    '}';
-        }
-
-        public JSONObject getFilters() {
-            return filters;
-        }
-
-        public void setFilters(JSONObject filters) {
-            this.filters = filters;
-        }
-
-        public void setOperator(String operator) {
-            this.operator = operator;
-        }
-
-        public void setComputeColumn(String computeColumn) {
-            this.computeColumn = computeColumn;
-        }
-
-        public String getTypeName() {
-            return typeName;
-        }
-
-        public void setTypeName(String typeName) {
-            this.typeName = typeName;
-        }
-
-        public List<String> getGroupingKeyNames() {
-            return groupingKeyNames;
-        }
-
-        public void setGroupingKeyNames(List<String> groupingKeyNames) {
-            this.groupingKeyNames = groupingKeyNames;
-        }
 
         public String getAggregatorFunctionType() {
             return aggregatorFunctionType;
@@ -361,6 +173,30 @@ public class Rule {
 
         public void setAggregatorFunctionType(String aggregatorFunctionType) {
             this.aggregatorFunctionType = aggregatorFunctionType;
+        }
+
+        public List<String> getGroupingNames() {
+            return groupingNames;
+        }
+
+        public void setGroupingNames(List<String> groupingNames) {
+            this.groupingNames = groupingNames;
+        }
+
+        public String getComputeColumn() {
+            return computeColumn;
+        }
+
+        public void setComputeColumn(String computeColumn) {
+            this.computeColumn = computeColumn;
+        }
+
+        public String getDatasource() {
+            return datasource;
+        }
+
+        public void setDatasource(String datasource) {
+            this.datasource = datasource;
         }
 
         public Long getWindow() {
@@ -378,14 +214,37 @@ public class Rule {
         public void setAliasName(String aliasName) {
             this.aliasName = aliasName;
         }
+
+        public JSONObject getFilter() {
+            return filter;
+        }
+
+        public void setFilter(JSONObject filter) {
+            this.filter = filter;
+        }
+
+        @Override
+        public String toString() {
+            return "AggregatorFun{" +
+                    "filter=" + filter +
+                    ", groupingNames=" + groupingNames +
+                    ", aggregatorFunctionType='" + aggregatorFunctionType + '\'' +
+                    ", computeColumn='" + computeColumn + '\'' +
+                    ", datasource='" + datasource + '\'' +
+                    ", window=" + window +
+                    ", aliasName='" + aliasName + '\'' +
+                    '}';
+        }
     }
 
 
     public static class PostAggregatorFun {
-        private List<Field> fields;
-        private String operator;
-        private String aliasName;
 
+        private List<Field> fields;
+
+        private String operator;
+
+        private String aliasName;
 
         public List<Field> getFields() {
             return fields;
@@ -411,7 +270,6 @@ public class Rule {
             this.operator = operator;
         }
 
-
         @Override
         public String toString() {
             return "PostAggregatorFun{" +
@@ -420,6 +278,7 @@ public class Rule {
                     ", aliasName='" + aliasName + '\'' +
                     '}';
         }
+
     }
 
     public static class Field {

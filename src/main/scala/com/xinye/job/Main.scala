@@ -4,8 +4,6 @@ import java.io.InputStream
 import java.util.Properties
 
 import com.xinye.dispatcher.Dispatcher
-import com.xinye.config.Parameters
-import org.apache.flink.api.java.utils.ParameterTool
 
 /**
  * @author daiwei04@xinye.com

@@ -1,50 +1,27 @@
 {
+  "ruleId": "1",
   "aggregatorFun": [
     {
-      "aggregatorFunctionType": "computebystep",
-      "aliasName": "loginPageDisplayed_startLogin",
-      "computeColumn": "timestamp",
-      "defaultValue": "-1",
-      "delay": 15,
-      "endStep": "loginPageDisplayed",
+      "aggregatorFunctionType": "sum",
+      "aliasName": "count_sum",
+      "computeColumn": "count",
+      "datasource": "perf.server.out_call.fast_compass",
+      "window": 1,
       "filters": {},
-      "groupingKeyNames": [],
-      "operator": "-",
-      "rating": 1,
-      "startStep": "startLogin",
-      "stepColumn": "trace.spanId",
-      "typeName": "聚合计算",
-      "window": 5
-    },
-    {
-      "aggregatorFunctionType": "computebystep",
-      "aliasName": "loginResul_startLogin",
-      "computeColumn": "timestamp",
-      "defaultValue": "-1",
-      "delay": 15,
-      "endStep": "loginResult",
-      "filters": {},
-      "groupingKeyNames": [],
-      "operator": "-",
-      "rating": 1,
-      "startStep": "startLogin",
-      "stepColumn": "trace.spanId",
-      "typeName": "聚合计算",
-      "window": 5
+      "groupingKeyNames": [
+        "host"
+      ],
+      "typeName": "聚合计算"
     }
   ],
-  "alarmRule": [],
-  "filters": {
-    "type": "selector",
-    "value": "login_page",
-    "key": "eventName",
-    "operator": "="
+  "appName": [
+    "*"
+  ],
+  "env": [
+    "fat"
+  ],
+  "filter": {
+    "domain": "*"
   },
-  "postaggregatorFun": [],
-  "ruleID": 1,
-  "ruleState": "active",
-  "transForm": [],
-  "uniqueKey": [
-    "trace.traceId"
-  ]
+  "ruleState": "start"
 }

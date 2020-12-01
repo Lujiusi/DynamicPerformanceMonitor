@@ -18,8 +18,6 @@ import scala.beans.BeanProperty
  */
 class MetricToMapSchema extends KafkaDeserializationSchema[util.Map[String, String]] with SerializationSchema[util.Map[String, String]] {
 
-  private val logger: Logger = LoggerFactory.getLogger(classOf[MetricToMapSchema])
-
   val serialVersionUID = 1L
   @BeanProperty
   @transient var charset: Charset = _
@@ -37,18 +35,28 @@ class MetricToMapSchema extends KafkaDeserializationSchema[util.Map[String, Stri
     //    1605750180000
     result.put("timestamp", message.substring(message.lastIndexOf(' ') + 1).substring(0, 13))
     message = message.substring(0, message.lastIndexOf(' '))
-    val mesArr: Array[String] = message.split("]-fat,")
-    val head: Array[String] = mesArr(0).split("\\.\\[")
-    result.put("category", head(0))
-    result.put("domain", head(1))
-    List(mesArr(1).substring(0, mesArr(1).lastIndexOf(' ')),
-      mesArr(1).substring(mesArr(1).lastIndexOf(' ') + 1))
-      .flatMap(_.split(","))
-      .map(_.split("="))
-      .foreach(tuple => {
-        result.put(tuple(0), tuple(1))
-      })
+    result.put("appName", message.substring(message.indexOf('[') + 1, message.indexOf(']')))
+    result.put("datasource", message.substring(0, message.indexOf('[') - 1))
+    result.put("env", message.substring(message.indexOf(']') + 2, message.indexOf(',')))
+    val mesArr: Array[String] = message.split("]-.{1,5},")
+    addValue(mesArr(1).substring(0, mesArr(1).lastIndexOf(' ')), result)
+    addValue(mesArr(1).substring(mesArr(1).lastIndexOf(' ') + 1), result)
     result
+  }
+
+  def addValue(str: String, result: util.Map[String, String]): Unit = {
+    val buffer = new StringBuffer(str(0))
+    for (c <- 1 until str.length - 1) {
+      val c1 = str.charAt(c)
+      val c2 = str.charAt(c - 1)
+      if (','.equals(c1) && !'\\'.equals(c2) && !'}'.equals(c2) || c == str.length - 1) {
+        val equalIndex = buffer.indexOf("=")
+        result.put(buffer.substring(0, equalIndex), buffer.substring(equalIndex + 1))
+        buffer.delete(0, buffer.length())
+      } else {
+        buffer.append(c1)
+      }
+    }
   }
 
   override def serialize(element: util.Map[String, String]): Array[Byte] = {

@@ -1,0 +1,23 @@
+{
+  "aggregatorFun": [
+    {
+      "aggregatorFunctionType": "sum",
+      "aliasName": "sum_count",
+      "computeColumn": "count",
+      "filters": {},
+      "groupingKeyNames": [
+        "host"
+      ],
+      "typeName": "聚合计算",
+      "window": 5
+    }
+  ],
+  "ruleID": 1,
+  "ruleState": "active",
+  "category": [
+    "perf.server.out_call.fast_compass"
+  ],
+  "uniqueKey": [
+    "domain"
+  ]
+}
