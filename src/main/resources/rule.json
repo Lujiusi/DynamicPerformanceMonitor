@@ -3,15 +3,39 @@
   "aggregatorFun": [
     {
       "aggregatorFunctionType": "sum",
-      "aliasName": "count_sum",
+      "aliasName": "group_sum",
       "computeColumn": "count",
       "datasource": "perf.server.out_call.fast_compass",
       "window": 1,
       "filters": {},
-      "groupingKeyNames": [
+      "groupingNames": [
         "host"
+      ]
+    },
+    {
+      "aggregatorFunctionType": "sum",
+      "aliasName": "all_sum",
+      "computeColumn": "count",
+      "datasource": "perf.server.out_call.fast_compass",
+      "window": 1,
+      "filters": {},
+      "groupingNames": []
+    }
+  ],
+  "postAggregatorFun": [
+    {
+      "aliasName": "count_zhanbi",
+      "fields": [
+        {
+          "fieldName": "group_sum",
+          "filters": {}
+        },
+        {
+          "fieldName": "all_sum",
+          "filters": {}
+        }
       ],
-      "typeName": "聚合计算"
+      "operator": "/"
     }
   ],
   "appName": [
@@ -20,7 +44,7 @@
   "env": [
     "fat"
   ],
-  "filter": {
+  "filters": {
     "domain": "*"
   },
   "ruleState": "start"

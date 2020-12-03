@@ -1,7 +1,12 @@
-package com.xinye.enums
+package com.xinye.enums.impl
 
-import com.xinye.enums.imp.BaseEnum
+import com.xinye.enums.BaseEnum
 
+/**
+ * @author daiwei04@xinye.com
+ * @date 2020/12/3 10:42
+ * @desc
+ */
 object LimitOperatorEnum extends BaseEnum {
   val EQUAL: LimitOperatorEnum.Value = Value("=")
   val NOT_EQUAL: LimitOperatorEnum.Value = Value("!=")

@@ -1,7 +1,9 @@
 package com.xinye.operator
 
 import com.alibaba.fastjson.JSONObject
-import com.xinye.enums.{LimitOperatorEnum, LogicEnum}
+import com.xinye.enums.impl.{LimitOperatorEnum, LogicEnum}
+import scala.collection.JavaConversions._
+
 import java.util.Map
 
 object DynamicFilterFunction {
@@ -32,6 +34,22 @@ object DynamicFilterFunction {
           case LimitOperatorEnum.REGEX => metricTag.r.findFirstIn(value).isDefined
         }
     }
+  }
+
+
+  def filter(value: java.util.Map[String, String], filterMap: java.util.Map[String, String]): Boolean = {
+    if (filterMap.size() == 0) {
+      true
+    } else {
+      filterMap
+        .forall(entry => {
+          "*".equals(entry._2) || entry._2.split(",").contains(value.get(entry._1))
+        })
+    }
+  }
+
+  def filter(value: String, range: java.util.List[String]): Boolean = {
+    range.size() == 0 || range.contains(value) || "*".equals(range.head)
   }
 
 }

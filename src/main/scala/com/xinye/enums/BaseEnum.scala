@@ -1,4 +1,4 @@
-package com.xinye.enums.imp
+package com.xinye.enums
 
 import scala.util.control.Breaks.{break, breakable}
 

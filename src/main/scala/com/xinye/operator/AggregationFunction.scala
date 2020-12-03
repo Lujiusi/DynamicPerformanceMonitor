@@ -1,11 +1,11 @@
 package com.xinye.operator
 
 import com.xinye.base.Rule.AggregatorFun
-import java.util.Map
 
-import com.xinye.enums.AggregatorFunctionType
+import java.util.Map
 import scala.collection.JavaConversions._
 import com.alibaba.fastjson.JSONObject
+import com.xinye.enums.impl.AggregatorFunctionType
 
 
 object AggregationFunction {

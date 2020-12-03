@@ -1,12 +1,9 @@
 package com.xinye.operator
 
 import java.text.DecimalFormat
-import java.util
-
 import com.xinye.base.Rule
 import com.xinye.config.state.StateDescriptor
-import com.xinye.enums.{ComputeEnum, RuleSateEnum}
-import com.xinye.operator.pojo.DynamicKey
+import com.xinye.pojo.DynamicKey
 import org.apache.flink.api.common.state._
 import org.apache.flink.streaming.api.functions.co.KeyedBroadcastProcessFunction
 import org.apache.flink.util.Collector
@@ -15,20 +12,18 @@ import org.slf4j.{Logger, LoggerFactory}
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ArrayBuffer
 import java.util.Map
-
+import java.util.HashMap
 import com.alibaba.fastjson.JSON
-
 import com.alibaba.fastjson.JSONObject
+import com.xinye.enums.impl.{ComputeEnum, RuleSateEnum}
 
 class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKey, (DynamicKey, Map[String, String]), Rule, (DynamicKey, Map[String, String])] {
 
   private val logger: Logger = LoggerFactory.getLogger(classOf[DynamicAggregationFunction])
 
-  // 用于保存状态数据
-  lazy val metricByKeyState: MapState[String, Map[Long, ArrayBuffer[Map[String, String]]]] = getRuntimeContext.getMapState(StateDescriptor.metricByKeyState)
+  lazy val detailState: MapState[Long, ArrayBuffer[Map[String, String]]] = getRuntimeContext.getMapState(StateDescriptor.detailState)
 
-  // 时间 -> 别名 -> 分组 -> 数据
-  //  lazy val aliasNameToValue: MapState[String, Map[String, String]] = getRuntimeContext.getMapState(StateDescriptor.aliasNameToValue)
+  lazy val aggState: MapState[String, Map[Long, Map[String, String]]] = getRuntimeContext.getMapState(StateDescriptor.aggState)
 
   override def processElement(value: (DynamicKey, Map[String, String]),
                               ctx: KeyedBroadcastProcessFunction[DynamicKey, (DynamicKey, Map[String, String]), Rule, (DynamicKey, Map[String, String])]#ReadOnlyContext,
@@ -40,19 +35,14 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
       RuleSateEnum.fromString(aggState.get(ruleId).getRuleState) match {
         case RuleSateEnum.START =>
           //将数据加入到对应 datasource 和 时间 内
-          val dataSource = value._2.get("datasource")
           val timeStamp: Long = value._2.get("timestamp").toLong / (1 * 60 * 1000) * 1 * 60 * 1000
-          if (metricByKeyState.get(dataSource) == null) {
-            metricByKeyState.put(dataSource, new util.HashMap[Long, ArrayBuffer[util.Map[String, String]]]())
+          if (detailState.get(timeStamp) == null) {
+            detailState.put(timeStamp, new ArrayBuffer[Map[String, String]]())
           }
-          if (metricByKeyState.get(dataSource).get(timeStamp) == null) {
-            metricByKeyState.get(dataSource).put(timeStamp, new ArrayBuffer[Map[String, String]]())
-          }
-          metricByKeyState.get(dataSource).get(timeStamp).append(value._2)
-
+          detailState.get(timeStamp).append(value._2)
           // 注册当前时间下一分钟的开始时间的定时器
           ctx.timerService().registerEventTimeTimer(ctx.timerService().currentWatermark() / (1 * 60 * 1000) * 1 * 60 * 1000 + 1 * 60 * 1000)
-        case _ => println("没匹配上")
+        case _ =>
       }
     } else {
       logger.error("Rule with ID {} does not exist", ruleId)
@@ -69,90 +59,66 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
   override def onTimer(timestamp: Long,
                        ctx: KeyedBroadcastProcessFunction[DynamicKey, (DynamicKey, Map[String, String]), Rule, (DynamicKey, Map[String, String])]#OnTimerContext,
                        out: Collector[(DynamicKey, Map[String, String])]): Unit = {
+    val time = timestamp - 60 * 1000
+
     val rule = ctx.getBroadcastState(StateDescriptor.dynamicAggregateRuleMapState).get(ctx.getCurrentKey.id)
 
-    if (ruleIsAvailable(rule)) {
+    val aggFuncList = rule.getAggregatorFun.filter(_.getDatasource.equals(JSON.parseObject(ctx.getCurrentKey.key).get("datasource")))
 
-      val funList = rule.getAggregatorFun
+    if (ruleIsAvailable(rule) && aggFuncList.nonEmpty) {
 
-      val allDataSource = funList.map(_.getDatasource).distinct
-
-      //       选出 不在 此 rule 统计中的 datasource 进行清除
-      metricByKeyState.keys()
-        .filter(key => !allDataSource.contains(key))
-        .foreach(metricByKeyState.remove)
-
-      // 已经超时的数据
-      funList.groupBy(_.getDatasource)
-        .mapValues(iter => iter.map(_.getWindow).max)
-        .foreach(entry => {
-          if (metricByKeyState.contains(entry._1)) {
-            val metricMap = metricByKeyState.get(entry._1)
-            metricMap.map(_._1)
-              .filter(_ < timestamp - entry._2 * 60 * 1000)
-              .foreach(metricMap.remove)
-          }
-        })
+      // 清除超时的状态
+      detailState.keys()
+        .filter(key => key <= time - aggFuncList.map(fun => fun.getWindow).max * 60 * 1000)
+        .foreach(detailState.remove)
 
       // 当前时间点所计算出的结果数据
-      val aggMap = new util.HashMap[String, Map[String, String]]()
+      val aggResultMap = new HashMap[String, Map[String, String]]()
 
-      funList.foreach(fun => {
+      aggFuncList.foreach(fun => {
         val window = fun.getWindow
-        val datasource = fun.getDatasource
-        if (metricByKeyState.contains(datasource)) {
-          val metricMap = metricByKeyState.get(datasource)
-          val metricList = metricMap.filter(_._1 > timestamp - window * 60 * 1000).flatMap(_._2)
-          if (metricList.nonEmpty) {
-            aggMap.put(fun.getAliasName, AggregationFunction.calculate(fun, metricList.toList))
-          }
-        }
+        val valueList = detailState.iterator()
+          .filter(entry => entry.getKey > time - window * 60 * 1000 && entry.getKey <= time)
+          .flatMap(_.getValue)
+          .toList
+        if (valueList.nonEmpty) aggResultMap.put(fun.getAliasName, AggregationFunction.calculate(fun, valueList))
       })
 
-      println("aggMap : " + aggMap)
+      //查出后置函数中datasource源为当前源的数据函数,通过别名对比
+      val postFuncList = rule.getPostAggregatorFun.filter(fun => {
+        aggResultMap.containsKey(fun.getFields.get(0).getFieldName)
+      })
 
-      val postFunList = rule.getPostAggregatorFun
-
-      val postAggMap = new util.HashMap[String, Map[String, String]]()
-
-      postFunList.foreach(fun => {
+      postFuncList.foreach(fun => {
         val fields = fun.getFields
+        if (!aggState.contains(fun.getAliasName)) {
+          aggState.put(fun.getAliasName, new HashMap[Long, Map[String, String]])
+        }
         fields.size() match {
           case 2 =>
-            println("字段数量是 2")
-            val firstField = fields.get(0).getFieldName
-            println("第一个值:" + firstField)
-
-            val secondField = fields.get(1).getFieldName
-            println("第二个值:" + secondField)
-
-            println("第一个值对应的值" + aggMap.get(firstField))
-
-            val firstMapToValue = aggMap.get(firstField).map {
+            val firstAggResult = aggResultMap.get(fields.get(0).getFieldName).map {
               item => (JSON.parseObject(item._1), item._2)
             }
-
-            println("字段一对应数据 : " + firstMapToValue)
-
-            aggMap.get(secondField).map {
+            aggResultMap.get(fields.get(1).getFieldName).map {
               item => (JSON.parseObject(item._1), item._2)
             }.foreach(entry => {
-              postAggMap.put(fun.getAliasName,
-                firstMapToValue.filter(item => relationMap(entry._1, item._1))
+              aggState.get(fun.getAliasName).put(time,
+                firstAggResult.filter(item => relationJSON(entry._1, item._1))
                   .map(item => (item._1.toJSONString, postCalculate(item._2, entry._2, fun.getOperator)))
               )
             })
-            println("到这里了吗")
           case 1 =>
+            aggState.get(fun.getAliasName).put(time, aggResultMap.get(fields.get(0).getFieldName))
           case _ =>
         }
       })
 
-      println("postAggMap : " + postAggMap)
-
+      println(s"时间戳: $time => 明细数据为 ${detailState.get(time)}")
+      println(s"时间戳: $time => 中间数据为 $aggResultMap")
+      println(s"时间戳: $time => 结果数据为 ${aggState.iterator().toList}")
 
     } else {
-      metricByKeyState.clear()
+      detailState.clear()
     }
 
   }
@@ -168,15 +134,14 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
     tag
   }
 
-  def relationMap(first: JSONObject, second: JSONObject): Boolean = {
+  def relationJSON(first: JSONObject, second: JSONObject): Boolean = {
     var result = true
     first.foreach(item => if (!second.contains(item._1) || !second.get(item._1).equals(item._2)) result = false)
     result
   }
 
-
   def postCalculate(firstValue: String, secondValue: String, operator: String): String = {
-    val df = new DecimalFormat("#.00")
+    val df = new DecimalFormat("#.0000")
     val result = ComputeEnum.fromString(operator) match {
       case ComputeEnum.addition => firstValue.toDouble + secondValue.toDouble
       case ComputeEnum.subtraction => firstValue.toDouble - secondValue.toDouble

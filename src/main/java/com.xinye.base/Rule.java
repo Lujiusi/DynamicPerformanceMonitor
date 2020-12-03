@@ -313,7 +313,9 @@ public class Rule {
     }
 
     public static class AlarmRule {
+
         private List<AlarmField> fields;
+
         private Integer alarmId;
 
         public List<AlarmField> getFields() {
@@ -334,8 +336,11 @@ public class Rule {
     }
 
     public static class AlarmField {
+
         private String alarmColumn;
+
         private String compareOperator;
+
         private Double target;
 
         public String getAlarmColumn() {
@@ -361,6 +366,7 @@ public class Rule {
         public void setTarget(Double target) {
             this.target = target;
         }
+
     }
 
 }

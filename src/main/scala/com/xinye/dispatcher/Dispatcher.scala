@@ -1,23 +1,27 @@
 package com.xinye.dispatcher
 
 import java.util
-
 import com.xinye.base.Rule
 import com.xinye.config.state.StateDescriptor
-import com.xinye.operator.pojo.DynamicKey
-import com.xinye.operator.{DynamicAggregationFunction, DynamicKeyedMapFunction, DynamicPostAggregateFun}
+import com.xinye.constant.ConfConstant
+import com.xinye.pojo.DynamicKey
+import com.xinye.operator.{DynamicAggregationFunction, DynamicKeyedMapFunction}
 import com.xinye.schema.{MetricToMapSchema, RuleSchema}
 import com.xinye.service.StreamEnv
 import org.apache.flink.streaming.api.datastream.BroadcastStream
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks
-import org.apache.flink.streaming.api.scala.{DataStream, createTypeInformation}
+import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment, createTypeInformation}
 import org.apache.flink.streaming.api.watermark.Watermark
 import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer010, FlinkKafkaProducer010}
 
 import scala.beans.BeanProperty
 import java.util.{Map, Properties}
-
 import org.apache.flink.api.common.serialization.SimpleStringSchema
+import org.apache.flink.runtime.state.filesystem.FsStateBackend
+import org.apache.flink.streaming.api.environment.CheckpointConfig
+import org.apache.flink.streaming.api.TimeCharacteristic
+import org.apache.flink.streaming.api.functions.timestamps.BoundedOutOfOrdernessTimestampExtractor
+import org.apache.flink.streaming.api.windowing.time.Time
 
 /**
  * @author daiwei04@xinye.com
@@ -37,22 +41,22 @@ class Dispatcher extends StreamEnv {
 
   def run(): Unit = {
 
-    val properties = new Properties()
+    val env: StreamExecutionEnvironment = StreamExecutionEnvironment.getExecutionEnvironment
+    val backend = new FsStateBackend(prop.getProperty(ConfConstant.CHECKPOINT_DIR), true)
+    env.setStateBackend(backend)
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
+    env.enableCheckpointing(60 * 1000)
+    val checkpointConfig: CheckpointConfig = env.getCheckpointConfig
+    checkpointConfig.setCheckpointTimeout(10 * 60 * 1000)
+    checkpointConfig.setMaxConcurrentCheckpoints(3)
 
-    properties.setProperty("bootstrap.servers", "10.114.24.226:9092,10.114.24.232:9092")
-    properties.setProperty("rule-topic", "performance_monitor_rule")
-    properties.setProperty("group.id", "dynamicAlarm_new")
 
     // 获取规则流
-    val ruleStream: DataStream[Rule] = env.addSource(getRuleSource(properties)).setParallelism(1)
-
-    val dynamicFilterRuleStream: BroadcastStream[Rule] = ruleStream.broadcast(StateDescriptor.dynamicFilterRuleMapState)
+    val ruleStream: DataStream[Rule] = env.addSource(getRuleSource(prop)).setParallelism(1)
 
     val dynamicKeyStream: BroadcastStream[Rule] = ruleStream.broadcast(StateDescriptor.dynamicKeyedMapState)
 
     val dynamicAggregateRuleStream: BroadcastStream[Rule] = ruleStream.broadcast(StateDescriptor.dynamicAggregateRuleMapState)
-    val dynamicPostAggregateRuleStream: BroadcastStream[Rule] = ruleStream.broadcast(StateDescriptor.dynamicPostAggregateRuleMapState)
-    val dynamicAlarmRuleStream: BroadcastStream[Rule] = ruleStream.broadcast(StateDescriptor.dynamicAlarmRuleMapState)
 
     ruleStream.print("规则流")
 
@@ -64,55 +68,33 @@ class Dispatcher extends StreamEnv {
       .uid("DynamicKeyed")
       .name("Dynamic Keyed Function")
 
-    val aggregateStream: DataStream[(DynamicKey, util.Map[String, String])] = keyedStream
-      .assignTimestampsAndWatermarks(new AssignerWithPeriodicWatermarks[(DynamicKey, util.Map[String, String])] {
-
-        var currentTime = 1605442872000L
-
-        override def getCurrentWatermark: Watermark = new Watermark(currentTime)
-
-
-        override def extractTimestamp(element: (DynamicKey, util.Map[String, String]), previousElementTimestamp: Long): Long = {
-          currentTime = element._2.getOrDefault("timestamp", "0").toLong
-          currentTime
-        }
+    val aggregateStream: DataStream[(DynamicKey, Map[String, String])] = keyedStream
+      .assignTimestampsAndWatermarks(new BoundedOutOfOrdernessTimestampExtractor[(DynamicKey, util.Map[String, String])](Time.minutes(1)) {
+        override def extractTimestamp(t: (DynamicKey, util.Map[String, String])): Long = t._2.getOrDefault("timestamp", "0").toLong
       })
       .keyBy(_._1)
       .connect(dynamicAggregateRuleStream)
       .process(new DynamicAggregationFunction)
 
     aggregateStream.print()
-    //    aggregateStream.assignTimestampsAndWatermarks(new AssignerWithPeriodicWatermarks[(DynamicKey, util.Map[String, String])] {
-    //
-    //      var currentTime = 1605442872000L
-    //
-    //      override def getCurrentWatermark: Watermark = new Watermark(currentTime)
-    //
-    //      override def extractTimestamp(element: (DynamicKey, util.Map[String, String]), previousElementTimestamp: Long): Long = {
-    //        currentTime = element._1.timestamp
-    //        currentTime
-    //      }
-    //
-    //    })
-    //      .keyBy(_._1)
-    //      .connect(dynamicPostAggregateRuleStream)
-    //      .process(new DynamicPostAggregateFun)
 
-    //    aggStream.connect(dynamicAlarmRuleStream).process(new DynamicAlarmFunction)
-
-    //    aggStream.print("聚合数据:")
-
-    env.execute("")
+    env.execute(prop.getProperty(ConfConstant.JOB_NAME))
 
   }
 
   def getRuleSource(prop: Properties): FlinkKafkaConsumer010[Rule] = {
-    val source = new FlinkKafkaConsumer010[Rule](prop.getProperty("rule-topic"), new RuleSchema(), prop)
+
+    val properties = new Properties()
+
+    properties.setProperty("bootstrap.servers", "10.114.24.226:9092,10.114.24.232:9092")
+    properties.setProperty("group.id", ConfConstant.KAFKA_GROUP_ID)
+
+    val source = new FlinkKafkaConsumer010[Rule](prop.getProperty("source.rule.topic"), new RuleSchema(), properties)
 
     source.assignTimestampsAndWatermarks(new AssignerWithPeriodicWatermarks[Rule]() {
 
       override def getCurrentWatermark: Watermark = {
-        new Watermark(System.currentTimeMillis() - 15 * 60 * 1000)
+        new Watermark(System.currentTimeMillis())
       }
 
       override def extractTimestamp(element: Rule, previousElementTimestamp: Long): Long = {
@@ -125,7 +107,12 @@ class Dispatcher extends StreamEnv {
   }
 
   def getDataSource(prop: Properties): FlinkKafkaConsumer010[util.Map[String, String]] = {
-    val source = new FlinkKafkaConsumer010(prop.getProperty("data-topic"), new MetricToMapSchema(), prop)
+    val kafkaProp = new Properties()
+    kafkaProp.setProperty("bootstrap.servers", prop.getProperty(ConfConstant.SOURCE_KAFKA_BROKERS))
+    kafkaProp.setProperty("group.id", prop.getProperty(ConfConstant.KAFKA_GROUP_ID))
+    kafkaProp.put("enable.auto.commit", "true")
+    kafkaProp.put("auto.commit.interval.ms", "10000")
+    val source = new FlinkKafkaConsumer010(prop.getProperty(ConfConstant.SOURCE_KAFKA_TOPIC), new MetricToMapSchema(), kafkaProp)
     source.setStartFromLatest()
     source
   }
