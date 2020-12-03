@@ -64,8 +64,6 @@ class Dispatcher extends StreamEnv {
       .uid("DynamicKeyed")
       .name("Dynamic Keyed Function")
 
-    keyedStream.print("分组流")
-
     val aggregateStream: DataStream[(DynamicKey, util.Map[String, String])] = keyedStream
       .assignTimestampsAndWatermarks(new AssignerWithPeriodicWatermarks[(DynamicKey, util.Map[String, String])] {
 

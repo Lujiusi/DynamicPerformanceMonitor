@@ -32,7 +32,7 @@ object StateDescriptor {
 
   val dynamicAlarmRuleMapState = new MapStateDescriptor[Integer, Rule]("DynamicAlarmRule", classOf[Integer], classOf[Rule])
 
-  val timeToAliasName = new MapStateDescriptor[Long, Map[String, Map[String, String]]]("TimeToAliasName", classOf[Long], classOf[Map[String, Map[String, String]]])
+  val aliasNameToValue = new MapStateDescriptor[String, Map[String, String]]("aliasNameToValue", classOf[String], classOf[Map[String, String]])
 
   val aliasNameToGroup = new MapStateDescriptor[String, String]("AliasNameToGroup", classOf[String], classOf[String])
 

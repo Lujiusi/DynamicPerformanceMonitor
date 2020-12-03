@@ -44,8 +44,7 @@ class DynamicKeyedMapFunction extends BroadcastProcessFunction[java.util.Map[Str
             // appName 为空表示所有 或者 appName 包含当前AppName 且满足 字符串的字段
             if (filter(metrics.get("appName"), rule.getAppName)
               && filter(metrics.get("env"), rule.getEnv)
-              && filter(metrics, rule.getFilters)
-              && "agent.heartbeat".equals(metrics.get("datasource"))) {
+              && filter(metrics, rule.getFilters)) {
               val keyJson = new JSONObject()
               keyJson.put("domain", metrics.get("appName"))
               //              keyJson.put("datasource", metrics.get("datasource"))

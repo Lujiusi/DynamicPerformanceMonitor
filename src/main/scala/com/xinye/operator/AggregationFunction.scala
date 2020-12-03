@@ -51,16 +51,14 @@ object AggregationFunction {
 
 
   def getGroupKey(groupNames: java.util.List[String], metric: java.util.Map[String, String]): String = {
-    var result = ""
+    val jsonKey = new JSONObject()
     if (groupNames != null) {
-      val jsonKey = new JSONObject()
       groupNames.foreach(name => {
         jsonKey.put(name, metric.get(name))
       })
-      jsonKey.put("datasource", metric.get("datasource"))
-      result = result + jsonKey.toJSONString
     }
-    result
+    jsonKey.put("datasource", metric.get("datasource"))
+    jsonKey.toJSONString
   }
 
 }

@@ -39,13 +39,14 @@ class MetricToMapSchema extends KafkaDeserializationSchema[util.Map[String, Stri
     result.put("datasource", message.substring(0, message.indexOf('[') - 1))
     result.put("env", message.substring(message.indexOf(']') + 2, message.indexOf(',')))
     val mesArr: Array[String] = message.split("]-.{1,5},")
+
     addValue(mesArr(1).substring(0, mesArr(1).lastIndexOf(' ')), result)
     addValue(mesArr(1).substring(mesArr(1).lastIndexOf(' ') + 1), result)
     result
   }
 
   def addValue(str: String, result: util.Map[String, String]): Unit = {
-    val buffer = new StringBuffer(str(0))
+    val buffer = new StringBuffer().append(str.charAt(0))
     for (c <- 1 until str.length - 1) {
       val c1 = str.charAt(c)
       val c2 = str.charAt(c - 1)

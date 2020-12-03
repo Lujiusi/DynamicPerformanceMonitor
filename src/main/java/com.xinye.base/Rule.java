@@ -240,11 +240,11 @@ public class Rule {
 
     public static class PostAggregatorFun {
 
+        private String aliasName;
+
         private List<Field> fields;
 
         private String operator;
-
-        private String aliasName;
 
         public List<Field> getFields() {
             return fields;
@@ -282,17 +282,10 @@ public class Rule {
     }
 
     public static class Field {
+
         private String fieldName;
+
         private JSONObject filters;
-        private String postAgg;
-
-        public String getPostAgg() {
-            return postAgg;
-        }
-
-        public void setPostAgg(String postAgg) {
-            this.postAgg = postAgg;
-        }
 
         public String getFieldName() {
             return fieldName;
@@ -315,7 +308,6 @@ public class Rule {
             return "Field{" +
                     "fieldName='" + fieldName + '\'' +
                     ", filters=" + filters +
-                    ", postAgg='" + postAgg + '\'' +
                     '}';
         }
     }

@@ -1,10 +1,11 @@
 package com.xinye.operator
 
+import java.text.DecimalFormat
 import java.util
 
 import com.xinye.base.Rule
 import com.xinye.config.state.StateDescriptor
-import com.xinye.enums.RuleSateEnum
+import com.xinye.enums.{ComputeEnum, RuleSateEnum}
 import com.xinye.operator.pojo.DynamicKey
 import org.apache.flink.api.common.state._
 import org.apache.flink.streaming.api.functions.co.KeyedBroadcastProcessFunction
@@ -14,6 +15,8 @@ import org.slf4j.{Logger, LoggerFactory}
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ArrayBuffer
 import java.util.Map
+
+import com.alibaba.fastjson.JSON
 
 import com.alibaba.fastjson.JSONObject
 
@@ -25,7 +28,7 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
   lazy val metricByKeyState: MapState[String, Map[Long, ArrayBuffer[Map[String, String]]]] = getRuntimeContext.getMapState(StateDescriptor.metricByKeyState)
 
   // 时间 -> 别名 -> 分组 -> 数据
-  lazy val timeToAliasName: MapState[Long, Map[String, Map[String, String]]] = getRuntimeContext.getMapState(StateDescriptor.timeToAliasName)
+  //  lazy val aliasNameToValue: MapState[String, Map[String, String]] = getRuntimeContext.getMapState(StateDescriptor.aliasNameToValue)
 
   override def processElement(value: (DynamicKey, Map[String, String]),
                               ctx: KeyedBroadcastProcessFunction[DynamicKey, (DynamicKey, Map[String, String]), Rule, (DynamicKey, Map[String, String])]#ReadOnlyContext,
@@ -49,7 +52,6 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
 
           // 注册当前时间下一分钟的开始时间的定时器
           ctx.timerService().registerEventTimeTimer(ctx.timerService().currentWatermark() / (1 * 60 * 1000) * 1 * 60 * 1000 + 1 * 60 * 1000)
-          println("定时器注册成功")
         case _ => println("没匹配上")
       }
     } else {
@@ -75,7 +77,7 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
 
       val allDataSource = funList.map(_.getDatasource).distinct
 
-      // 选出 不在 此 rule 统计中的 datasource 进行清除
+      //       选出 不在 此 rule 统计中的 datasource 进行清除
       metricByKeyState.keys()
         .filter(key => !allDataSource.contains(key))
         .foreach(metricByKeyState.remove)
@@ -84,32 +86,71 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
       funList.groupBy(_.getDatasource)
         .mapValues(iter => iter.map(_.getWindow).max)
         .foreach(entry => {
-          val metricMap = metricByKeyState.get(entry._1)
-          metricMap.map(_._1)
-            .filter(_ < timestamp - entry._2 * 60 * 1000)
-            .foreach(metricMap.remove)
+          if (metricByKeyState.contains(entry._1)) {
+            val metricMap = metricByKeyState.get(entry._1)
+            metricMap.map(_._1)
+              .filter(_ < timestamp - entry._2 * 60 * 1000)
+              .foreach(metricMap.remove)
+          }
         })
 
-      val time = timestamp - 1 * 60 * 1000
+      // 当前时间点所计算出的结果数据
+      val aggMap = new util.HashMap[String, Map[String, String]]()
 
-      // 初始化 结果存储对象
-      if (timeToAliasName.get(time) == null) {
-        timeToAliasName.put(time, new util.HashMap[String, Map[String, String]]())
-      }
-
-      val resultMap = new util.HashMap[String, Map[String, String]]()
       funList.foreach(fun => {
         val window = fun.getWindow
         val datasource = fun.getDatasource
-        val metricMap = metricByKeyState.get(datasource)
-        val metricList = metricMap.filter(_._1 > timestamp - window * 60 * 1000).flatMap(_._2)
-
-        if (metricList.nonEmpty) {
-          val calculateResult = AggregationFunction.calculate(fun, metricList.toList)
-          println("-----" + calculateResult)
+        if (metricByKeyState.contains(datasource)) {
+          val metricMap = metricByKeyState.get(datasource)
+          val metricList = metricMap.filter(_._1 > timestamp - window * 60 * 1000).flatMap(_._2)
+          if (metricList.nonEmpty) {
+            aggMap.put(fun.getAliasName, AggregationFunction.calculate(fun, metricList.toList))
+          }
         }
-
       })
+
+      println("aggMap : " + aggMap)
+
+      val postFunList = rule.getPostAggregatorFun
+
+      val postAggMap = new util.HashMap[String, Map[String, String]]()
+
+      postFunList.foreach(fun => {
+        val fields = fun.getFields
+        fields.size() match {
+          case 2 =>
+            println("字段数量是 2")
+            val firstField = fields.get(0).getFieldName
+            println("第一个值:" + firstField)
+
+            val secondField = fields.get(1).getFieldName
+            println("第二个值:" + secondField)
+
+            println("第一个值对应的值" + aggMap.get(firstField))
+
+            val firstMapToValue = aggMap.get(firstField).map {
+              item => (JSON.parseObject(item._1), item._2)
+            }
+
+            println("字段一对应数据 : " + firstMapToValue)
+
+            aggMap.get(secondField).map {
+              item => (JSON.parseObject(item._1), item._2)
+            }.foreach(entry => {
+              postAggMap.put(fun.getAliasName,
+                firstMapToValue.filter(item => relationMap(entry._1, item._1))
+                  .map(item => (item._1.toJSONString, postCalculate(item._2, entry._2, fun.getOperator)))
+              )
+            })
+            println("到这里了吗")
+          case 1 =>
+          case _ =>
+        }
+      })
+
+      println("postAggMap : " + postAggMap)
+
+
     } else {
       metricByKeyState.clear()
     }
@@ -127,10 +168,22 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
     tag
   }
 
-  def postCalculate(metricList: Map[String, Map[String, String]], calFun: JSONObject): Unit = {
-    val fields = calFun.getJSONArray("fields")
-    val operator = calFun.getString("operator")
-    val first_fields = fields.get(0)
+  def relationMap(first: JSONObject, second: JSONObject): Boolean = {
+    var result = true
+    first.foreach(item => if (!second.contains(item._1) || !second.get(item._1).equals(item._2)) result = false)
+    result
+  }
+
+
+  def postCalculate(firstValue: String, secondValue: String, operator: String): String = {
+    val df = new DecimalFormat("#.00")
+    val result = ComputeEnum.fromString(operator) match {
+      case ComputeEnum.addition => firstValue.toDouble + secondValue.toDouble
+      case ComputeEnum.subtraction => firstValue.toDouble - secondValue.toDouble
+      case ComputeEnum.division => df.format(firstValue.toDouble / secondValue.toDouble).toDouble
+      case ComputeEnum.multiplication => firstValue.toDouble + secondValue.toDouble
+    }
+    result.toString
   }
 
 }
