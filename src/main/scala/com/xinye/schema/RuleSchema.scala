@@ -33,7 +33,7 @@ class RuleSchema extends KafkaDeserializationSchema[Rule] with SerializationSche
     var rule = new Rule()
     try {
       rule = JSON.parseObject(message, classOf[Rule])
-      logger.info("收到规则：{}", message)
+      logger.info("Rule Received：{}", message)
     } catch {
       case e: Exception =>
         e.printStackTrace()

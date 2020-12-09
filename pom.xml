@@ -51,13 +51,6 @@
             <version>1.2.62</version>
         </dependency>
 
-        <!-- https://mvnrepository.com/artifact/org.influxdb/influxdb-java -->
-        <dependency>
-            <groupId>org.influxdb</groupId>
-            <artifactId>influxdb-java</artifactId>
-            <version>2.20</version>
-        </dependency>
-
         <!-- Add connector dependencies here. They must be in the default scope (compile). -->
         <dependency>
             <groupId>org.apache.flink</groupId>
@@ -244,6 +237,5 @@
         </profile>
 
     </profiles>
-
 
 </project>

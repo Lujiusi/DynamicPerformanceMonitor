@@ -12,9 +12,23 @@ object AggregationFunction {
 
   def calculate(fun: AggregatorFun,
                 metricList: List[Map[String, String]]): java.util.Map[String, String] = {
-    val filterMetrics = metricsFilter(fun.getFilter, metricList)
-    metricList.groupBy(metric => {
-      getGroupKey(fun.getGroupingNames, metric)
+    var filterMetrics = metricList
+    val filters = fun.getFilters
+    //    println("filterMetrics 1 " + filterMetrics)
+    if (filters != null && filters.size() != 0) {
+      filterMetrics = metricList.filter(metric => DynamicFilterFunction.filter(metric, filters))
+    }
+    println("filterMetrics 2 " + filterMetrics)
+    filterMetrics.groupBy(metric => {
+      val groupingNames = fun.getGroupingNames
+      val jsonKey = new JSONObject()
+      if (groupingNames != null) {
+        groupingNames.foreach(name => {
+          jsonKey.put(name, metric.get(name))
+        })
+      }
+      jsonKey.put("datasource", metric.get("datasource"))
+      jsonKey.toJSONString
     }).mapValues {
       metricIter => {
         val resultValue = AggregatorFunctionType.fromString(fun.getAggregatorFunctionType) match {
@@ -32,33 +46,6 @@ object AggregationFunction {
         resultValue.toString
       }
     }
-  }
-
-  /**
-   * 过滤数据
-   *
-   * @param filters          过滤规则
-   * @param metricByKeyState 数据集合
-   * @return
-   */
-  def metricsFilter(filters: JSONObject, metricByKeyState: List[Map[String, String]]): List[Map[String, String]] = {
-    if (filters != null && filters.size() != 0) {
-      metricByKeyState.filter(metric => DynamicFilterFunction.filter(metric, filters))
-    } else {
-      metricByKeyState
-    }
-  }
-
-
-  def getGroupKey(groupNames: java.util.List[String], metric: java.util.Map[String, String]): String = {
-    val jsonKey = new JSONObject()
-    if (groupNames != null) {
-      groupNames.foreach(name => {
-        jsonKey.put(name, metric.get(name))
-      })
-    }
-    jsonKey.put("datasource", metric.get("datasource"))
-    jsonKey.toJSONString
   }
 
 }

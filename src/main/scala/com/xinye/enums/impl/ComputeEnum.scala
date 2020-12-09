@@ -8,8 +8,8 @@ import com.xinye.enums.BaseEnum
  * @desc
  */
 object ComputeEnum extends BaseEnum {
-  val addition = Value("+")
-  val subtraction = Value("-")
-  val multiplication = Value("*")
-  val division = Value("/")
+  val addition: ComputeEnum.Value = Value("+")
+  val subtraction: ComputeEnum.Value = Value("-")
+  val multiplication: ComputeEnum.Value = Value("*")
+  val division: ComputeEnum.Value = Value("/")
 }

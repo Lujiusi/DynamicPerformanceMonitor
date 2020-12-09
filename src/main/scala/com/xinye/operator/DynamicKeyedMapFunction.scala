@@ -26,12 +26,12 @@ class DynamicKeyedMapFunction extends BroadcastProcessFunction[java.util.Map[Str
         RuleSateEnum.fromString(rule.getRuleState) match {
           case RuleSateEnum.START =>
             // appName 为空表示所有 或者 appName 包含当前AppName 且满足 字符串的字段
-            if (DynamicFilterFunction.filter(value.get("appName"), rule.getAppName)
-              && DynamicFilterFunction.filter(value.get("env"), rule.getEnv)
-              && DynamicFilterFunction.filter(value, rule.getFilters)) {
+            if (DynamicFilterFunction.filter(value, rule.getFilters)) {
               val key = new JSONObject()
-              key.put("datasource", value.get("datasource"))
-              out.collect((DynamicKey(rule.getRuleID, key.toJSONString, 0), value))
+              key.put("appName", value.get("appName"))
+              // 移除datasource,算是减少状态大小
+              value.remove("appName")
+              out.collect((DynamicKey(rule.getRuleID, key.toJSONString), value))
             }
           case _ =>
         }
@@ -44,6 +44,5 @@ class DynamicKeyedMapFunction extends BroadcastProcessFunction[java.util.Map[Str
                                        out: Collector[(DynamicKey, Map[String, String])]): Unit = {
     StateDescriptor.changeBroadcastState(value, ctx.getBroadcastState(StateDescriptor.dynamicKeyedMapState))
   }
-
 
 }

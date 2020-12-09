@@ -1,139 +1,66 @@
 {
+  "ruleId": "1000",
   "aggregatorFun": [
     {
-      "aggregatorFunctionType": "computebystep",                          --前聚合计算方式，例如：sum/count/avg等，当前使用的是计算两步时间差方式
-      "aliasName": "popRequestTime_homeExposureTime",           --计算结果别名
-      "computeColumn": "timestamp",                                                --需要进行计算的字段
-      "defaultValue": "-1",                                                                      --默认值
-      "delay": 15,                                                                                    --数据延时
-      "endStep": "popRequestTime",                                                   --消息结束tag
-      "filters": {},                                                                                     --过滤规则
-      "groupingKeyNames": [],                                                            --内部分组字段
-      "operator": "-",                                                                             --针对两步计算的方式
-      "rating": 1,                                                                                    --计算频率
-      "startStep": "homeExposureTime",                                          --消息开始tag
-      "stepColumn": "trace.spanId",                                                  --消息开始结束取自于哪个字段
-      "typeName": "聚合计算",
-      "window": 1                                                                                 --时间窗口大小
+      "aggregatorFunctionType": "max",
+      "aliasName": "load.1min.max",
+      "datasource": "system.load.*",
+      "window": 1,
+      "computeColumn": "full_gc.sum",
+      "filters": [
+        {
+          "key": "host",
+          "value": [
+            "192.168.1.1",
+            "192.168.1.2"
+          ]
+        }
+      ],
+      "groupingKeyNames": []
     },
     {
-      "aggregatorFunctionType": "computebystep",
-      "aliasName": "popExposureTime_homeExposureTime",
-      "computeColumn": "timestamp",
-      "defaultValue": "-1",
-      "delay": 15,
-      "endStep": "popExposureTime",
-      "filters": {},
-      "groupingKeyNames": [],
-      "operator": "-",
-      "rating": 1,
-      "startStep": "homeExposureTime",
-      "stepColumn": "trace.spanId",
-      "typeName": "聚合计算",
-      "window": 1
-    },
-    {
-      "aggregatorFunctionType": "count",
-      "aliasName": "popExposureTime-homeExposureTime",
-      "computeColumn": "popExposureTime-homeExposureTime",
-      "delay": 15,
-      "distinctColumns": [],
-      "filters": {
-        "type": "selector",
-        "value": "1,2,3",
-        "key": "homeExposureTime",
-        "operator": "not in"
-      },
-      "groupingKeyNames": [],
-      "rating": 1,
-      "typeName": "聚合计算",
-      "window": 1
-    },
-    {
-      "aggregatorFunctionType": "count",
-      "aliasName": "popRequestTime-homeExposureTime",
-      "computeColumn": "popRequestTime-homeExposureTime",
-      "delay": 15,
-      "distinctColumns": [],
-      "filters": {},
-      "groupingKeyNames": [],
-      "rating": 1,
-      "typeName": "聚合计算",
-      "window": 1
-    },
-    {
-      "aggregatorFunctionType": "count",
-      "aliasName": "请求总量",
-      "computeColumn": "eventId",
-      "delay": 15,
-      "distinctColumns": [],
-      "filters": {
-        "type": "selector",
-        "value": "homeExposureTime",
-        "key": "trace.spanId",
-        "operator": "="
-      },
-      "groupingKeyNames": [],
-      "rating": 1,
-      "typeName": "聚合计算",
-      "window": 1
+      "aggregatorFunctionType": "sum",
+      "aliasName": "cpu.idle.value",
+      "datasource": "system.cpu.*",
+      "computeColumn": "idle",
+      "window": 2
     }
   ],
-  "alarmRule": [],
   "filters": {
-    "type": "selector",                                                                                     --type分为3种值,and or selector
-    "value": "home_pop",
-    "key": "eventName",
-    "operator": "="
+    "": ""
   },
-  "postaggregatorFun": [
+  "alarmRule": {
+    "type": "and",
+    "fields": [
+      {
+        "type": "selector",
+        "alarmColumn": "load.1min.max",
+        "compareOperator": ">",
+        "target": 5
+      },
+      {
+        "type": "selector",
+        "alarmColumn": "load.1min.max.total",
+        "compareOperator": ">",
+        "target": 10
+      }
+    ]
+  },
+  "postAggregatorFun": [
     {
-      "aliasName": "弹框的曝光慢加载占比",                                               --别名
+      "aliasName": "load.1min.max.total",
       "fields": [
         {
-          "feildName": "popExposureTime-homeExposureTime",        --该值取自于前聚合的别名
-          "filters": {                                                                                     --筛选大于500的请求
-            "type": "selector",
-            "value": "500",
-            "key": "popExposureTime-homeExposureTime",
-            "operator": ">"
-          },
-          "postAgg": "count"                                                                  --求其数量
+          "fieldName": "cpu.system.value,cpu.system.value",
+          "postAgg": "sum"
         },
         {
-          "feildName": "请求总量",                                                          --取自于前聚合的别名
-          "filters": {},
-          "postAgg": "count"                                                                  --求其数量
+          "fieldName": "cpu.idle.value",
+          "postAgg": "sum"
         }
       ],
-      "operator": "/"                                                                                  --针对于上面两个结果求除法操作，目前支持加减乘除
-    },
-    {
-      "aliasName": "弹框的请求慢加载占比",
-      "fields": [
-        {
-          "feildName": "popRequestTime-homeExposureTime",
-          "filters": {
-            "type": "selector",
-            "value": "500",
-            "key": "popRequestTime-homeExposureTime",
-            "operator": ">"
-          },
-          "postAgg": "count"
-        },
-        {
-          "feildName": "请求总量",
-          "filters": {},
-          "postAgg": "count"
-        }
-      ],
-      "operator": "/"
+      "operator": "+"
     }
   ],
-  "ruleID": 2,
-  "ruleState": "active",
-  "transForm": [],
-  "uniqueKey": [
-    "trace.traceId"
-  ]
+  "ruleState": "start"
 }

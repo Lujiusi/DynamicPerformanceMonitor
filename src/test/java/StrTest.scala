@@ -1,4 +1,8 @@
+
 import java.util
+import java.util.Map
+import java.util.HashMap
+import scala.collection.mutable.ArrayBuffer
 
 /**
  * @author daiwei04@xinye.com
@@ -9,43 +13,47 @@ object StrTest {
 
   def main(args: Array[String]): Unit = {
 
-    var message =
-      """agent.heartbeat.[tenant.ppdapi.com]-fat,cluster=default,env=fat,healthy=true,host=10.114.15.120 detail="{MemoryStatus=Result{isHealthy=true}, SystemLoad=Result{isHealthy=true}, ThreadDeadlock=Result{isHealthy=true}}",startTime=1606387656265,uptime=338304105,version="4.0" 1606725900000000000
-        |""".stripMargin
+    /*
+        val array = Array(Array[(String, String, String)](("group_sum", "{\"host\":\"10.114.6.25\"}", "7.0"), ("group_sum", "{\"host\":\"10.114.133.158\"}", "4.0")),
+          Array[(String, String, String)](("all_sum", "{}", "19.0")))
 
+        println(combination(array))
+    */
 
-    val result = new util.HashMap[String, String]()
-    //    1605750180000
-    result.put("timestamp", message.substring(message.lastIndexOf(' ') + 1).substring(0, 13))
-    message = message.substring(0, message.lastIndexOf(' '))
-    result.put("appName", message.substring(message.indexOf('[') + 1, message.indexOf(']')))
-    result.put("datasource", message.substring(0, message.indexOf('[') - 1))
-    result.put("env", message.substring(message.indexOf(']') + 2, message.indexOf(',')))
-    val mesArr: Array[String] = message.split("]-.{1,5},")
+    val map = new util.HashMap[String, String]
 
-    println(mesArr(1).substring(0, mesArr(1).lastIndexOf(' ')))
-    println(mesArr(1).substring(mesArr(1).lastIndexOf(' ') + 1))
+    println(map.get("ddd") != null)
 
-    addValue(mesArr(1).substring(0, mesArr(1).lastIndexOf(' ')), result)
-    addValue(mesArr(1).substring(mesArr(1).lastIndexOf(' ') + 1), result)
-
-    print(result)
 
   }
 
-  def addValue(str: String, result: util.Map[String, String]): Unit = {
-    val buffer = new StringBuffer().append(str.charAt(0))
-    for (c <- 1 until str.length - 1) {
-      val c1 = str.charAt(c)
-      val c2 = str.charAt(c - 1)
-      if (','.equals(c1) && !'\\'.equals(c2) && !'}'.equals(c2) || c == str.length - 1) {
-        val equalIndex = buffer.indexOf("=")
-        result.put(buffer.substring(0, equalIndex), buffer.substring(equalIndex + 1))
-        buffer.delete(0, buffer.length())
-      } else {
-        buffer.append(c1)
-      }
+  def combination(arrList: Array[Array[(String, String, String)]]): ArrayBuffer[Map[String, (String, String)]] = {
+    if (arrList.length == 1) {
+      val result = new ArrayBuffer[util.Map[String, (String, String)]]()
+      val startMap = new util.HashMap[String, (String, String)]
+      arrList(0).foreach(tuple => {
+        startMap.put(tuple._1, (tuple._2, tuple._3))
+      })
+      result.append(startMap)
+      result
+
+    } else {
+      combinerList(combination(arrList.drop(1)), arrList(0))
     }
   }
 
+  def combinerList(arr1: ArrayBuffer[Map[String, (String, String)]], arr2: Array[(String, String, String)]): ArrayBuffer[Map[String, (String, String)]] = {
+    val result = new ArrayBuffer[Map[String, (String, String)]]()
+    arr2.foreach(tuple => {
+      arr1.foreach(
+        map => {
+          val temp = new HashMap[String, (String, String)](map)
+          temp.put(tuple._1, (tuple._2, tuple._3))
+          result.append(temp)
+        }
+      )
+      println(s"result $result")
+    })
+    result
+  }
 }

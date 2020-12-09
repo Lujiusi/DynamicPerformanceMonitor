@@ -4,10 +4,9 @@ import java.util
 import com.xinye.base.Rule
 import com.xinye.config.state.StateDescriptor
 import com.xinye.constant.ConfConstant
-import com.xinye.pojo.DynamicKey
+import com.xinye.pojo.{AlarmMessage, DynamicKey}
 import com.xinye.operator.{DynamicAggregationFunction, DynamicKeyedMapFunction}
 import com.xinye.schema.{MetricToMapSchema, RuleSchema}
-import com.xinye.service.StreamEnv
 import org.apache.flink.streaming.api.datastream.BroadcastStream
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks
 import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment, createTypeInformation}
@@ -29,7 +28,7 @@ import org.apache.flink.streaming.api.windowing.time.Time
  * @desc
  */
 
-class Dispatcher extends StreamEnv {
+class Dispatcher {
 
   @transient
   @BeanProperty var prop: Properties = _
@@ -50,7 +49,6 @@ class Dispatcher extends StreamEnv {
     checkpointConfig.setCheckpointTimeout(10 * 60 * 1000)
     checkpointConfig.setMaxConcurrentCheckpoints(3)
 
-
     // 获取规则流
     val ruleStream: DataStream[Rule] = env.addSource(getRuleSource(prop)).setParallelism(1)
 
@@ -58,17 +56,17 @@ class Dispatcher extends StreamEnv {
 
     val dynamicAggregateRuleStream: BroadcastStream[Rule] = ruleStream.broadcast(StateDescriptor.dynamicAggregateRuleMapState)
 
-    ruleStream.print("规则流")
-
     // 获取 数据流
     val dataStream: DataStream[Map[String, String]] = env.addSource(getDataSource(prop)).rebalance
+
+    ruleStream.print("Rule:")
 
     val keyedStream: DataStream[(DynamicKey, Map[String, String])] = dataStream.connect(dynamicKeyStream)
       .process(new DynamicKeyedMapFunction)
       .uid("DynamicKeyed")
       .name("Dynamic Keyed Function")
 
-    val aggregateStream: DataStream[(DynamicKey, Map[String, String])] = keyedStream
+    val aggregateStream: DataStream[AlarmMessage] = keyedStream
       .assignTimestampsAndWatermarks(new BoundedOutOfOrdernessTimestampExtractor[(DynamicKey, util.Map[String, String])](Time.minutes(1)) {
         override def extractTimestamp(t: (DynamicKey, util.Map[String, String])): Long = t._2.getOrDefault("timestamp", "0").toLong
       })
@@ -76,7 +74,7 @@ class Dispatcher extends StreamEnv {
       .connect(dynamicAggregateRuleStream)
       .process(new DynamicAggregationFunction)
 
-    aggregateStream.print()
+    aggregateStream.print("alarmMessage:")
 
     env.execute(prop.getProperty(ConfConstant.JOB_NAME))
 

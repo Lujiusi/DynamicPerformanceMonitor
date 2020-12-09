@@ -8,6 +8,7 @@ import com.xinye.enums.BaseEnum
  * @desc
  */
 object LimitOperatorEnum extends BaseEnum {
+
   val EQUAL: LimitOperatorEnum.Value = Value("=")
   val NOT_EQUAL: LimitOperatorEnum.Value = Value("!=")
   val GREATER_EQUAL: LimitOperatorEnum.Value = Value(">=")
@@ -17,4 +18,11 @@ object LimitOperatorEnum extends BaseEnum {
   val IN: LimitOperatorEnum.Value = Value
   val NOTIN: LimitOperatorEnum.Value = Value
   val REGEX: LimitOperatorEnum.Value = Value
+  val CHAIN_GROWTH: LimitOperatorEnum.Value = Value
+  val CHAIN_DOWN: LimitOperatorEnum.Value = Value
+  val YOY_HOUR_GROWTH: LimitOperatorEnum.Value = Value
+  val YOY_HOUR_DOWN: LimitOperatorEnum.Value = Value
+  val YOY_DAY_GROWTH: LimitOperatorEnum.Value = Value
+  val YOY_DAY_DOWN: LimitOperatorEnum.Value = Value
+
 }
