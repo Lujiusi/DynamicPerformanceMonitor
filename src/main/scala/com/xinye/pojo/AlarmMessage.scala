@@ -4,7 +4,6 @@ import com.alibaba.fastjson.JSONObject
 
 /**
  * @author daiwei04@xinye.com
- * @date 2020/12/8 22:12
- * @desc
+ * @since 2020/12/8 22:12
  */
 case class AlarmMessage(ruleId: Int, appName: String, alarmRule: JSONObject)

@@ -1,4 +1,6 @@
 
+import com.xinye.enums.impl.LogicEnum
+
 import java.util
 import java.util.Map
 import java.util.HashMap
@@ -23,6 +25,8 @@ object StrTest {
     val map = new util.HashMap[String, String]
 
     println(map.get("ddd") != null)
+
+    println(LogicEnum.fromString(null))
 
 
   }

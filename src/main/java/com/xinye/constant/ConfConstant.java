@@ -1,9 +1,10 @@
 package com.xinye.constant;
 
 /**
+ * 配置常量集合
+ *
  * @author daiwei04@xinye.com
- * @date 2020/12/03 23:08
- * @desc 配置常量集合
+ * @since 2020/12/03 23:08
  */
 public interface ConfConstant {
     String SOURCE_KAFKA_BROKERS = "source.bootstrap.servers";

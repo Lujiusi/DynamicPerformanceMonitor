@@ -7,8 +7,7 @@ import com.xinye.dispatcher.Dispatcher
 
 /**
  * @author daiwei04@xinye.com
- * @date 2020/11/19 11:18
- * @desc
+ * @since 2020/11/19 11:18
  */
 object Main {
 

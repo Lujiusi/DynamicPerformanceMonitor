@@ -4,8 +4,7 @@ import com.xinye.enums.BaseEnum
 
 /**
  * @author daiwei04@xinye.com
- * @date 2020/12/3 10:42
- * @desc
+ * @since 2020/12/3 10:42
  */
 object LimitOperatorEnum extends BaseEnum {
 
@@ -18,11 +17,11 @@ object LimitOperatorEnum extends BaseEnum {
   val IN: LimitOperatorEnum.Value = Value
   val NOTIN: LimitOperatorEnum.Value = Value
   val REGEX: LimitOperatorEnum.Value = Value
-  val CHAIN_GROWTH: LimitOperatorEnum.Value = Value
+  val CHAIN_UP: LimitOperatorEnum.Value = Value
   val CHAIN_DOWN: LimitOperatorEnum.Value = Value
-  val YOY_HOUR_GROWTH: LimitOperatorEnum.Value = Value
+  val YOY_HOUR_UP: LimitOperatorEnum.Value = Value
   val YOY_HOUR_DOWN: LimitOperatorEnum.Value = Value
-  val YOY_DAY_GROWTH: LimitOperatorEnum.Value = Value
+  val YOY_DAY_UP: LimitOperatorEnum.Value = Value
   val YOY_DAY_DOWN: LimitOperatorEnum.Value = Value
 
 }

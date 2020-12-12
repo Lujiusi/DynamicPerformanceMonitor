@@ -4,8 +4,7 @@ import com.xinye.enums.BaseEnum
 
 /**
  * @author daiwei04@xinye.com
- * @date 2020/12/3 10:42
- * @desc
+ * @since 2020/12/3 10:42
  */
 object RuleSateEnum extends BaseEnum {
 

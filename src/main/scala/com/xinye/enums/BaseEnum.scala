@@ -4,8 +4,7 @@ import scala.util.control.Breaks.{break, breakable}
 
 /**
  * @author daiwei04@xinye.com
- * @date 2020/11/24 17:14
- * @desc
+ * @since 2020/11/24 17:14
  */
 trait BaseEnum extends Enumeration {
 
