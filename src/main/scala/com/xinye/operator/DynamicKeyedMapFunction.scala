@@ -24,7 +24,9 @@ class DynamicKeyedMapFunction extends BroadcastProcessFunction[Map[String, Strin
         val rule = entry.getValue
         if (CommonFunction.ruleIsAvailable(rule)) {
           // appName 为空表示所有 或者 appName 包含当前AppName 且满足 字符串的字段
-          if (CommonFunction.filter(value, rule.getFilters) && ruleToDatasource.get(rule.getRuleID).contains(value.get("datasource"))) {
+          if (CommonFunction.filter(value, rule.getFilters)
+            && ruleToDatasource.containsKey(rule.getRuleID)
+            && ruleToDatasource.get(rule.getRuleID).contains(value.get("datasource"))) {
             val key = new JSONObject()
             key.put("appName", value.get("appName"))
             val result = new HashMap[String, String](value)

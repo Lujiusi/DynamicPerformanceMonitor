@@ -2,7 +2,7 @@ package com.xinye.operator
 
 import java.text.{DecimalFormat, SimpleDateFormat}
 import com.xinye.base.Rule
-import com.xinye.pojo.{AlarmMessage, DynamicKey}
+import com.xinye.pojo.DynamicKey
 import org.apache.flink.api.common.state._
 import org.apache.flink.streaming.api.functions.co.KeyedBroadcastProcessFunction
 import org.apache.flink.util.Collector
@@ -23,7 +23,7 @@ import scala.collection.mutable
  * @author daiwei04@xinye.com
  * @since 2020/12/11 22:18
  */
-class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKey, (DynamicKey, Map[String, String]), Rule, AlarmMessage] {
+class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKey, (DynamicKey, Map[String, String]), Rule, JSONObject] {
 
   private final val logger: Logger = LoggerFactory.getLogger(classOf[DynamicAggregationFunction])
 
@@ -36,8 +36,8 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
   private final val allDsToMaxWindow: Map[Int, Iterable[Rule.AggregatorFun]] = new HashMap[Int, Iterable[Rule.AggregatorFun]]()
 
   override def processElement(value: (DynamicKey, Map[String, String]),
-                              ctx: KeyedBroadcastProcessFunction[DynamicKey, (DynamicKey, Map[String, String]), Rule, AlarmMessage]#ReadOnlyContext,
-                              collector: Collector[AlarmMessage]): Unit = {
+                              ctx: KeyedBroadcastProcessFunction[DynamicKey, (DynamicKey, Map[String, String]), Rule, JSONObject]#ReadOnlyContext,
+                              collector: Collector[JSONObject]): Unit = {
     val aggState: ReadOnlyBroadcastState[Integer, Rule] = ctx.getBroadcastState(StateDescriptor.ruleState)
     val ruleId: Int = value._1.id
     if (aggState.contains(ruleId) && CommonFunction.ruleIsAvailable(aggState.get(ruleId))) {
@@ -58,76 +58,58 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
   }
 
   override def processBroadcastElement(rule: Rule,
-                                       ctx: KeyedBroadcastProcessFunction[DynamicKey, (DynamicKey, Map[String, String]), Rule, AlarmMessage]#Context,
-                                       collector: Collector[AlarmMessage]): Unit = {
+                                       ctx: KeyedBroadcastProcessFunction[DynamicKey, (DynamicKey, Map[String, String]), Rule, JSONObject]#Context,
+                                       collector: Collector[JSONObject]): Unit = {
     if (StateDescriptor.changeBroadcastState(rule, ctx.getBroadcastState(StateDescriptor.ruleState))) {
       allDsToMaxWindow.put(rule.getRuleID, rule.getAggregatorFun.groupBy(_.getDatasource).mapValues(_.maxBy(_.getWindow)).values)
     }
   }
 
   override def onTimer(timestamp: Long,
-                       ctx: KeyedBroadcastProcessFunction[DynamicKey, (DynamicKey, Map[String, String]), Rule, AlarmMessage]#OnTimerContext,
-                       out: Collector[AlarmMessage]): Unit = {
+                       ctx: KeyedBroadcastProcessFunction[DynamicKey, (DynamicKey, Map[String, String]), Rule, JSONObject]#OnTimerContext,
+                       out: Collector[JSONObject]): Unit = {
 
     val rule = ctx.getBroadcastState(StateDescriptor.ruleState).get(ctx.getCurrentKey.id)
 
     val aggFuncList = rule.getAggregatorFun
 
+    val alarmRule = rule.getAlarmRule
+
     // 如果规则可行
-    if (CommonFunction.ruleIsAvailable(rule) && aggFuncList.nonEmpty) {
-
-      val dsToMaxWindow = allDsToMaxWindow.get(rule.getRuleID)
-
-      // 所有的用于统计指标的datasource都存在
-      val aggAvailable = dsToMaxWindow.map(_.getDatasource)
-        .forall(datasource => {
-          detailState.contains(datasource)
-        })
+    if (CommonFunction.ruleIsAvailable(rule) && aggFuncList != null && alarmRule != null) {
 
       val time = timestamp - 60 * 1000
 
-      if (aggAvailable) {
+      val dsToMaxWindow = allDsToMaxWindow.get(rule.getRuleID)
 
-        // 清除已经不在datasource中的 key
-        detailState.keys().filter(datasource => {
-          !dsToMaxWindow.map(_.getDatasource).contains(datasource)
-        }).foreach(detailState.remove)
+      cleanDetailState(time, dsToMaxWindow)
 
-        // 清楚 datasource 中已经不在最大窗口大小中的数据
-        dsToMaxWindow.foreach(fun => {
-          detailState.get(fun.getDatasource)
-            .map(_._1)
-            .filter(_ < time - fun.getWindow * 60 * 1000)
-            .foreach(detailState.get(fun.getDatasource).remove)
-        })
+      // 保存 agg 和 postAgg 计算出的所有结果,
+      val aggResultMap = new HashMap[String, Map[String, String]]()
 
-        // 保存 agg 和 postAgg 计算出的所有结果,
-        val aggResultMap = new HashMap[String, Map[String, String]]()
-
-        // 添加 agg 计算结果
-        aggFuncList.foreach(fun => {
-          val window = fun.getWindow
+      // 添加 agg 计算结果
+      aggFuncList.foreach(fun => {
+        // 如果 含有 对应的 datasource 的明细数据 则进行统计对应的聚合信息
+        if (detailState.contains(fun.getDatasource)) {
           val valueList = detailState.get(fun.getDatasource)
-            .filter(entry => entry._1 > time - window * 60 * 1000 && entry._1 <= time)
+            .filter(entry => entry._1 > time - fun.getWindow * 60 * 1000 && entry._1 <= time)
             .flatMap(_._2)
             .toList
-          if (valueList.nonEmpty) aggResultMap.put(fun.getAliasName, CommonFunction.calculate(fun, valueList))
-        })
+          val aliasResult = CommonFunction.calculate(fun, valueList)
+          if (aliasResult.nonEmpty) {
+            aggResultMap.put(fun.getAliasName, CommonFunction.calculate(fun, valueList))
+          }
+        }
+      })
 
-        val postAggFunList = rule.getPostAggregatorFun
+      val postAggFunList = rule.getPostAggregatorFun
 
-        val postAvailable = postAggFunList.flatMap(_.getFields)
-          .map(_.getFieldName)
-          .flatMap(_.split(","))
-          .forall(fieldName => {
-            aggResultMap.containsKey(fieldName)
-          })
+      if (postAggFunList != null) {
 
-        // 如果 postAggFun 中所需要的数据 aggResultMap 全都有
-        // 才能进行开始计算 postAgg 结果 并添加到 aggResultMap 中
-        if (postAvailable) {
+        postAggFunList.foreach(fun => {
 
-          postAggFunList.foreach(fun => {
+          // 如果方法所需要的 前聚合数据 aggResultMap 全都有, 则进行当前 postAgg 的计算,并加入 aggResultMap
+          if (fun.getFields.map(_.getFieldName.split(",")).forall(aggResultMap.containsKey)) {
 
             // 从每个 aggResultMap 中 找到并计算每个 field 随对应的值
             val fieldsValueMap = fun.getFields
@@ -165,103 +147,145 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
 
             aggResultMap.put(fun.getAliasName, currentPostAggResult)
 
+          }
+        })
+
+      }
+
+      // 聚合操作完成完成 aggResultMap 装填完成
+
+      val selectors = getSelector(alarmRule)
+
+
+      // 确定别名所要对比的时间,或者要保存的 '单个周期时长' (预警需要保存七个周期时长)
+      val selectorToMap = selectors.map(selector => {
+        (selector._1, getRelationWindow(selector._1, selector._2, rule))
+      }).toMap
+
+      // 每次定时器的都要执行的操作 将能聚合出的指标加入状态中
+      operatorAggState(time, selectorToMap, aggResultMap)
+
+      // 到达此步 所有计算操作完成 , 准备进行 加载预警判断
+
+      if (selectors.map(_._1).forall(aggResultMap.containsKey)) {
+
+        // 清除 aggResultMap 中不被 alarmRule 需要的部分
+        aggResultMap.map(_._1).filter(aliasName => {
+          !selectors.map(_._1).contains(aliasName)
+        }).foreach(aggResultMap.remove)
+
+        val appName = JSON.parseObject(ctx.getCurrentKey.key).getString("appName")
+
+        // 获取所有 selector 所对应的分组值
+        val groupingNameList = selectors.map(selector =>
+          getRelationGroupingName(selector._1, rule)
+        )
+
+        // 获取 selector 都有的 分组值
+        val commonGroupingName = groupingNameList.flatMap(_.split(","))
+          .groupBy(word => word)
+          .mapValues(_.size)
+          .filter(_._2 == groupingNameList.size)
+          .keys.toList
+
+        val alarmDataList = aggResultMap.flatMap(entry => {
+          entry._2.map(item => {
+            (entry._1, item._1, item._2)
+          })
+        })
+          .groupBy(tuple => {
+            getCommonJSON(commonGroupingName, JSON.parseObject(tuple._2)).toJSONString
+          })
+          .mapValues(iter => {
+            val list = iter.groupBy(_._1).values.toArray.map(_.toArray)
+            combination(list)
+          })
+          .flatMap(_._2)
+          .map(map => {
+            map.map(entry => {
+              (entry._1, (entry._2._1, entry._2._2, selectorToMap(entry._1)))
+            })
           })
 
-          logger.info("aggResultMap : {}", aggResultMap)
+        logger.info("alarmDataList : {}", alarmDataList.toList)
 
-          val alarmRule = rule.getAlarmRule
+        alarmDataList.filter(alarmFilter(time, _, alarmRule))
+          .foreach(map => {
+            val result = new JSONObject()
+            result.put("ruleId", rule.getRuleID)
+            result.put("appName", appName)
+            result.put("tags", rule.getTags)
+            result.put("sink", rule.getSink)
+            val alarmRule = JSON.parseObject(rule.getAlarmRule.toJSONString)
+            reformAlarmRule(alarmRule, map, time)
+            result.put("alarmRule", alarmRule)
+            out.collect(result)
+          })
 
-          // 如果有预警条件
-          if (alarmRule != null && alarmRule.size() != 0) {
-
-            // 获取alarm需要的所有的指标别名 和对应比较方法
-            val selectors = getSelector(alarmRule)
-
-            // 如果预警所需要的指标 aggResultMap 全都有 则继续 , 否则报错
-            if (selectors.map(_._1).forall(aggResultMap.containsKey)) {
-
-              // 清除 aggResult 中 selector 不需要的数据
-              aggResultMap.keys.filter(key => {
-                !selectors.map(_._1).contains(key)
-              }).foreach(aggResultMap.remove)
-
-              val appName = JSON.parseObject(ctx.getCurrentKey.key).getString("appName")
-
-              // 将aggState中不含的key进行清除
-              aggState.keys().filter(key => {
-                !selectors.map(_._1).contains(key)
-              }).foreach(aggState.remove)
-
-              // 确定别名所要对比的时间,或者要保存的 '单个周期时长' (预警需要保存七个周期时长)
-              val selectorToMap = selectors.map(selector => {
-                (selector._1, getRelationWindow(selector._1, selector._2, rule))
-              }).toMap
-
-              selectorToMap.foreach(item => {
-                if (!aggState.contains(item._1)) {
-                  aggState.put(item._1, new HashMap[Long, Map[String, String]])
-                }
-                // 将当前的 聚合数据 加入状态中
-                aggState.get(item._1).put(time, aggResultMap.get(item._1))
-
-                // 去除七个周期以外的数据
-                aggState.get(item._1).map(_._1)
-                  .filter(_ < time - 6 * selectorToMap(item._1))
-                  .foreach(aggState.get(item._1).remove)
-              })
-
-              // 获取所有 selector 所对应的分组值
-              val groupingNameList = selectors.map(selector =>
-                getRelationGroupingName(selector._1, rule)
-              )
-
-              // 获取 selector 都有的 分组值
-              val commonGroupingName = groupingNameList.flatMap(_.split(","))
-                .groupBy(word => word)
-                .mapValues(_.size)
-                .filter(_._2 == groupingNameList.size)
-                .keys.toList
-
-              val alarmDataList = aggResultMap.flatMap(entry => {
-                entry._2.map(item => {
-                  (entry._1, item._1, item._2)
-                })
-              })
-                .groupBy(tuple => {
-                  getCommonJSON(commonGroupingName, JSON.parseObject(tuple._2)).toJSONString
-                })
-                .mapValues(iter => {
-                  val list = iter.groupBy(_._1).values.toArray.map(_.toArray)
-                  combination(list)
-                })
-                .flatMap(_._2)
-                .map(map => {
-                  map.map(entry => {
-                    (entry._1, (entry._2._1, entry._2._2, selectorToMap(entry._1)))
-                  })
-                })
-
-              logger.info("alarmDataList : {}", alarmDataList.toList)
-
-              alarmDataList.filter(alarmFilter(time, _, alarmRule))
-                .foreach(map => {
-                  val alarmRule = JSON.parseObject(rule.getAlarmRule.toJSONString)
-                  reformAlarmRule(alarmRule, map, time)
-                  out.collect(AlarmMessage(rule.getRuleID, appName, alarmRule))
-                })
-
-            }
-          }
-        } else {
-          logger.warn(s"Rule NO.${rule.getRuleID} 在 ${format.format(time)} 分钟 不满足postAggregate条件 !", rule.getRuleID)
-        }
-      } else {
-        logger.warn(s"Rule NO.${rule.getRuleID} 在 ${format.format(time)} 分钟 不满足aggregate条件 !", rule.getRuleID)
       }
+
     } else {
-      logger.warn("Rule NO.{} is not start || aggregationFunction is Empty !", rule.getRuleID)
+      logger.warn("Rule NO.{} 不是 start 状态 ! 清空缓存的所有状态", rule.getRuleID)
       detailState.clear()
+      aggState.clear()
     }
+  }
+
+  /**
+   * 对明细状态进行清除
+   *
+   * @param time          当前时间
+   * @param dsToMaxWindow datasource 和 需要保存的最大时时间
+   */
+  def cleanDetailState(time: Long, dsToMaxWindow: Iterable[Rule.AggregatorFun]): Unit = {
+
+    // 清除已经不在datasource中的 key
+    detailState.keys().filter(datasource => {
+      !dsToMaxWindow.map(_.getDatasource).contains(datasource)
+    }).foreach(detailState.remove)
+
+    // 清楚 datasource 中已经不在最大窗口大小中的数据
+    dsToMaxWindow.foreach(fun => {
+      if (detailState.contains(fun.getDatasource)) {
+        detailState.get(fun.getDatasource)
+          .map(_._1)
+          .filter(_ < time - fun.getWindow * 60 * 1000)
+          .foreach(detailState.get(fun.getDatasource).remove)
+      }
+    })
+
+  }
+
+  /**
+   * 清理 aggState 中过期的过期的数据 并将计算出来的数据 加入状态
+   *
+   * @param time
+   * @param selectorToMap
+   * @param aggResultMap
+   */
+  def operatorAggState(time: Long, selectorToMap: Map[String, Long], aggResultMap: Map[String, Map[String, String]]): Unit = {
+
+    // 将aggState中不含的key进行清除
+    aggState.keys().filter(key => {
+      !selectorToMap.map(_._1).contains(key)
+    }).foreach(aggState.remove)
+
+    selectorToMap.foreach(item => {
+      if (aggState.contains(item._1)) {
+        // 去除七个周期以外的数据
+        aggState.get(item._1).map(_._1)
+          .filter(_ < time - 6 * selectorToMap(item._1))
+          .foreach(aggState.get(item._1).remove)
+      } else {
+        aggState.put(item._1, new HashMap[Long, Map[String, String]])
+      }
+      // 将当前的 聚合数据 加入状态中
+      if (aggResultMap.containsKey(item._1)) {
+        aggState.get(item._1).put(time, aggResultMap.get(item._1))
+      }
+
+    })
+
   }
 
 
@@ -477,9 +501,7 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
     if (aggState.contains(alarmColumn)) {
       (for (i <- 0 to 6) yield time - i * window).foreach(timestamp => {
         if (aggState.get(alarmColumn).containsKey(timestamp) &&
-          aggState.get(alarmColumn)
-            .get(timestamp)
-            .containsKey(groupName)) {
+          aggState.get(alarmColumn).get(timestamp).containsKey(groupName)) {
           val value = aggState.get(alarmColumn).get(timestamp).get(groupName)
           if (value != null) {
             result.put(format.format(timestamp), value.toDouble)

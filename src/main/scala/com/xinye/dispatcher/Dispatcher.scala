@@ -1,30 +1,38 @@
 package com.xinye.dispatcher
 
+import com.alibaba.fastjson.JSONObject
 import com.xinye.base.Rule
 import com.xinye.constant.ConfConstant
-import com.xinye.pojo.{AlarmMessage, DynamicKey}
+import com.xinye.pojo.DynamicKey
 import com.xinye.operator.{DynamicAggregationFunction, DynamicKeyedMapFunction}
 import com.xinye.schema.{MetricToMapSchema, RuleSchema}
 import com.xinye.state.StateDescriptor
 
 import scala.beans.BeanProperty
-import java.util.{Map, Properties}
-import org.apache.flink.api.common.serialization.{SerializationSchema, SimpleStringSchema}
+import scala.collection.JavaConversions._
+import java.util.{HashMap, Map, Properties}
+import org.apache.flink.api.common.serialization.SerializationSchema
 import org.apache.flink.runtime.state.filesystem.FsStateBackend
-import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer010, FlinkKafkaProducer010, KafkaDeserializationSchema}
+import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer010, KafkaDeserializationSchema}
 import org.apache.flink.streaming.api.datastream.BroadcastStream
 import org.apache.flink.streaming.api.functions.IngestionTimeExtractor
 import org.apache.flink.streaming.api.functions.timestamps.BoundedOutOfOrdernessTimestampExtractor
 import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment, createTypeInformation}
 import org.apache.flink.streaming.api.environment.CheckpointConfig
 import org.apache.flink.streaming.api.TimeCharacteristic
+import org.apache.flink.streaming.api.functions.sink.{RichSinkFunction, SinkFunction}
 import org.apache.flink.streaming.api.windowing.time.Time
+import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
+import org.apache.kafka.common.serialization.StringSerializer
+import org.slf4j.{Logger, LoggerFactory}
 
 /**
  * @author daiwei04@xinye.com
  * @since 2020/11/19 11:23
  */
 class Dispatcher {
+
+  private final val logger: Logger = LoggerFactory.getLogger(classOf[Dispatcher])
 
   @transient
   @BeanProperty var prop: Properties = _
@@ -59,7 +67,7 @@ class Dispatcher {
       .uid("DynamicKeyed")
       .name("Dynamic Keyed Function")
 
-    val aggregateStream: DataStream[AlarmMessage] = keyedStream
+    val aggregateStream: DataStream[JSONObject] = keyedStream
       .assignTimestampsAndWatermarks(new BoundedOutOfOrdernessTimestampExtractor[(DynamicKey, Map[String, String])](Time.minutes(1)) {
         override def extractTimestamp(t: (DynamicKey, Map[String, String])): Long = t._2.getOrDefault("timestamp", "0").toLong
       })
@@ -68,6 +76,41 @@ class Dispatcher {
       .process(new DynamicAggregationFunction)
 
     aggregateStream.print("alarmMessage:")
+
+    aggregateStream.addSink(new RichSinkFunction[JSONObject] {
+
+      private val sinkMap: Map[String, KafkaProducer[String, String]] = new HashMap[String, KafkaProducer[String, String]]()
+
+      private def getKafkaProducer(bs: String): KafkaProducer[String, String] = {
+        if (sinkMap.get(bs) != null) {
+          sinkMap.put(bs, createKafkaProducer(bs))
+        }
+        sinkMap.get(bs)
+      }
+
+      def createKafkaProducer(bs: String): KafkaProducer[String, String] = {
+        val sinkProp = new Properties()
+        sinkProp.put("bootstrap.servers", bs)
+        sinkProp.put("acks", "1")
+        sinkProp.put("key.serializer", classOf[StringSerializer].getName)
+        sinkProp.put("value.serializer", classOf[StringSerializer].getName)
+        new KafkaProducer[String, String](sinkProp)
+      }
+
+      override def invoke(value: JSONObject, context: SinkFunction.Context[_]): Unit = {
+        val sink = value.get("sink").asInstanceOf[JSONObject]
+        value.remove("sink")
+        val bs = sink.getString("bootstrap.servers")
+        val topic = sink.getString("topic")
+        val kafkaProducer = getKafkaProducer(bs)
+        kafkaProducer.send(new ProducerRecord(topic, value.toJSONString))
+      }
+
+      override def close(): Unit = {
+        sinkMap.values().foreach(_.close())
+      }
+
+    })
 
     env.execute(prop.getProperty(ConfConstant.JOB_NAME))
 
@@ -91,10 +134,6 @@ class Dispatcher {
     val source = new FlinkKafkaConsumer010(topic, schema, prop)
     source.setStartFromLatest()
     source
-  }
-
-  def getAlarmSink(prop: Properties): FlinkKafkaProducer010[String] = {
-    new FlinkKafkaProducer010[String]("performance_monitor_rule", new SimpleStringSchema(), prop)
   }
 
 }

@@ -9,8 +9,8 @@ package com.xinye.constant;
 public interface ConfConstant {
     String SOURCE_KAFKA_BROKERS = "source.bootstrap.servers";
     String SOURCE_KAFKA_TOPIC = "source.kafka.topic";
-    String SINK_KAFKA_BROKERS = "sink.bootstrap.servers";
-    String SINK_KAFKA_TOPIC = "sink.kafka.topic";
+    String SINK_KAFKA_BROKERS = "bootstrap.servers";
+    String SINK_KAFKA_TOPIC = "topic";
     String JOB_NAME = "job.name";
     String KAFKA_GROUP_ID = "group.id";
     String CHECKPOINT_DIR = "checkpoint.dir";
