@@ -1,0 +1,27 @@
+{
+  "ruleId": "1",
+  "category": "jvm",
+  "aggregatorFun": [
+    {
+      "aggregatorFunctionType": "sum",
+      "aliasName": "group_sum",
+      "computeColumn": "count",
+      "datasource": "perf.server.out_call.fast_compass",
+      "window": 2,
+      "filters": {},
+      "groupingNames": [
+        "host"
+      ]
+    }
+  ],
+  "postAggregatorFun": [
+  ],
+  "alarmRule": {
+    "type": "selector",
+    "alarmColumn": "group_sum",
+    "compareOperator": ">",
+    "target": 100
+  },
+  "filters": {},
+  "ruleState": "start"
+}

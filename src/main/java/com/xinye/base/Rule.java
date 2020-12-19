@@ -17,6 +17,7 @@ public class Rule {
     private JSONObject tags;
     private JSONObject sink;
     private String ruleState;
+    private String category;
     private Map<String, String> filters;
     private List<AggregatorFun> aggregatorFun;
     private List<PostAggregatorFun> postAggregatorFun;
@@ -52,6 +53,14 @@ public class Rule {
 
     public void setRuleState(String ruleState) {
         this.ruleState = ruleState;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
     }
 
     public Map<String, String> getFilters() {
@@ -90,9 +99,10 @@ public class Rule {
     public String toString() {
         return "Rule{" +
                 "ruleID=" + ruleID +
-                ", tags='" + tags + '\'' +
+                ", tags=" + tags +
                 ", sink=" + sink +
                 ", ruleState='" + ruleState + '\'' +
+                ", category='" + category + '\'' +
                 ", filters=" + filters +
                 ", aggregatorFun=" + aggregatorFun +
                 ", postAggregatorFun=" + postAggregatorFun +
@@ -278,8 +288,6 @@ public class Rule {
 
         private String fieldName;
 
-        private String postAgg;
-
         public String getFieldName() {
             return fieldName;
         }
@@ -288,19 +296,10 @@ public class Rule {
             this.fieldName = fieldName;
         }
 
-        public String getPostAgg() {
-            return postAgg;
-        }
-
-        public void setPostAgg(String postAgg) {
-            this.postAgg = postAgg;
-        }
-
         @Override
         public String toString() {
             return "PostFiled{" +
                     "fieldName='" + fieldName + '\'' +
-                    ", postAgg='" + postAgg + '\'' +
                     '}';
         }
     }

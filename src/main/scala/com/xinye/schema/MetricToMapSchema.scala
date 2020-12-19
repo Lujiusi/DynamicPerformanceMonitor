@@ -7,6 +7,7 @@ import org.apache.flink.streaming.connectors.kafka.KafkaDeserializationSchema
 import org.apache.flink.api.common.serialization.SerializationSchema
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.kafka.clients.consumer.ConsumerRecord
+import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.JavaConversions._
 
@@ -15,6 +16,8 @@ import scala.collection.JavaConversions._
  * @since 2020/11/19 16:34
  */
 class MetricToMapSchema extends KafkaDeserializationSchema[Map[String, String]] with SerializationSchema[Map[String, String]] {
+
+  private val logger: Logger = LoggerFactory.getLogger(classOf[MetricToMapSchema])
 
   @transient var charset: Charset = StandardCharsets.UTF_8
 
@@ -31,32 +34,39 @@ class MetricToMapSchema extends KafkaDeserializationSchema[Map[String, String]] 
 
   def parse(msg: String): Map[String, String] = {
     val result = new HashMap[String, String]
-    // 解析头部
-    val head = msg.substring(0, msg.indexOf(","))
-    if (head.contains('[')) {
-      result.put("datasource", head.substring(0, msg.indexOf("[") - 1))
-      result.put("appName", head.substring(head.indexOf("[") + 1, head.indexOf("]")))
-      result.put("env", head.substring(head.indexOf("]-") + 2))
-    } else {
-      result.put("datasource", head.substring(0, head.lastIndexOf(".")))
-      result.put("env", head.substring(head.lastIndexOf(".") + 1))
-    }
-    // 解析尾部时间
-    result.put("timestamp", msg.substring(msg.lastIndexOf(" ") + 1, msg.lastIndexOf(" ") + 14))
+    try {
+      // 解析头部
+      val head = msg.substring(0, msg.indexOf(","))
+      if (head.contains('[')) {
+        result.put("datasource", head.substring(0, msg.indexOf("[") - 1))
+        result.put("appName", head.substring(head.indexOf("[") + 1, head.indexOf("]")))
+        result.put("env", head.substring(head.indexOf("]-") + 2))
+      } else {
+        result.put("datasource", head.substring(0, head.lastIndexOf(".")))
+        result.put("env", head.substring(head.lastIndexOf(".") + 1))
+      }
+      // 解析尾部时间
+      result.put("timestamp", msg.substring(msg.lastIndexOf(" ") + 1, msg.lastIndexOf(" ") + 14))
 
-    val body = msg.substring(msg.indexOf(",") + 1, msg.lastIndexOf(" "))
-    val str = body.replaceAll("\\\\ ", "\u0001")
-    val temp = new HashMap[String, String]
-    val tag = str.substring(0, str.indexOf(" "))
-    splitTagAndValue(tag, temp)
-    val value = str.substring(str.indexOf(" ") + 1)
-    splitTagAndValue(value, temp)
-    temp.foreach(entry => {
-      result.put(entry._1, entry._2.replaceAll("\u0002", "\\\\,")
-        .replaceAll("\u0003", "\\\\=")
-        .replaceAll("\u0004", "\\\\ ")
-      )
-    })
+      val body = msg.substring(msg.indexOf(",") + 1, msg.lastIndexOf(" "))
+      val str = body.replaceAll("\\\\ ", "\u0001")
+      val temp = new HashMap[String, String]
+      val tag = str.substring(0, str.indexOf(" "))
+      splitTagAndValue(tag, temp)
+      val value = str.substring(str.indexOf(" ") + 1)
+      splitTagAndValue(value, temp)
+      temp.foreach(entry => {
+        result.put(entry._1, entry._2.replaceAll("\u0002", "\\\\,")
+          .replaceAll("\u0003", "\\\\=")
+          .replaceAll("\u0004", "\\\\ ")
+        )
+      })
+
+    } catch {
+      case e: Exception => result.clear()
+        logger.info("{} 解析失败", msg)
+        e.printStackTrace()
+    }
     result
   }
 

@@ -1,10 +1,12 @@
 package com.xinye.state
 
 import com.xinye.base.Rule
-import com.xinye.enums.impl.RuleSateEnum
+import com.xinye.enums.impl.RuleStateEnum
 import org.apache.flink.api.common.state.{BroadcastState, MapStateDescriptor, StateTtlConfig}
 import org.apache.flink.api.common.time.Time
+import com.alibaba.fastjson.JSONObject
 
+import java.util
 import java.util.Map
 import scala.collection.mutable.ArrayBuffer
 
@@ -25,14 +27,16 @@ object StateDescriptor {
 
   aggState.enableTimeToLive(ttlConfig)
 
+  val allDsToMaxWindow = new MapStateDescriptor("allDsToMaxWindow", classOf[Int], classOf[Iterable[Rule.AggregatorFun]])
+
   def changeBroadcastState(value: Rule, ruleState: BroadcastState[Integer, Rule]): Boolean = {
     if (value != null) {
-      RuleSateEnum.fromString(value.getRuleState) match {
-        case RuleSateEnum.START => ruleState.put(value.getRuleID, value)
-        case RuleSateEnum.DELETE => ruleState.remove(value.getRuleID)
-        case RuleSateEnum.STOP =>
+      RuleStateEnum.fromString(value.getRuleState) match {
+        case RuleStateEnum.START => ruleState.put(value.getRuleID, value)
+        case RuleStateEnum.DELETE => ruleState.remove(value.getRuleID)
+        case RuleStateEnum.STOP =>
           val rule = ruleState.get(value.getRuleID)
-          rule.setRuleState(RuleSateEnum.STOP.toString)
+          rule.setRuleState(RuleStateEnum.STOP.toString)
           ruleState.put(rule.getRuleID, rule)
       }
       true
@@ -40,5 +44,7 @@ object StateDescriptor {
       false
     }
   }
+
+  val customs = new MapStateDescriptor[String, Map[Map[String, String], Int]]("customs", classOf[String], classOf[Map[Map[String, String], Int]])
 
 }

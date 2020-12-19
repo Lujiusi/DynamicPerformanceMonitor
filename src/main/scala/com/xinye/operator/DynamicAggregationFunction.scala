@@ -33,14 +33,13 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
 
   private final val format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
 
-  private final val allDsToMaxWindow: Map[Int, Iterable[Rule.AggregatorFun]] = new HashMap[Int, Iterable[Rule.AggregatorFun]]()
-
   override def processElement(value: (DynamicKey, Map[String, String]),
                               ctx: KeyedBroadcastProcessFunction[DynamicKey, (DynamicKey, Map[String, String]), Rule, JSONObject]#ReadOnlyContext,
                               collector: Collector[JSONObject]): Unit = {
-    val aggState: ReadOnlyBroadcastState[Integer, Rule] = ctx.getBroadcastState(StateDescriptor.ruleState)
-    val ruleId: Int = value._1.id
-    if (aggState.contains(ruleId) && CommonFunction.ruleIsAvailable(aggState.get(ruleId))) {
+    val ruleId = value._1.id
+    val ruleState: ReadOnlyBroadcastState[Integer, Rule] = ctx.getBroadcastState(StateDescriptor.ruleState)
+    //    val ruleId: Int = value._1.id
+    if (ruleState.contains(ruleId) && CommonFunction.ruleIsAvailable(ruleState.get(ruleId))) {
       //将数据加入到对应 datasource 和 时间 内
       val timestamp: Long = value._2.get("timestamp").toLong / (1 * 60 * 1000) * 1 * 60 * 1000
       val datasource = value._2.get("datasource")
@@ -60,9 +59,7 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
   override def processBroadcastElement(rule: Rule,
                                        ctx: KeyedBroadcastProcessFunction[DynamicKey, (DynamicKey, Map[String, String]), Rule, JSONObject]#Context,
                                        collector: Collector[JSONObject]): Unit = {
-    if (StateDescriptor.changeBroadcastState(rule, ctx.getBroadcastState(StateDescriptor.ruleState))) {
-      allDsToMaxWindow.put(rule.getRuleID, rule.getAggregatorFun.groupBy(_.getDatasource).mapValues(_.maxBy(_.getWindow)).values)
-    }
+    StateDescriptor.changeBroadcastState(rule, ctx.getBroadcastState(StateDescriptor.ruleState))
   }
 
   override def onTimer(timestamp: Long,
@@ -80,7 +77,7 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
 
       val time = timestamp - 60 * 1000
 
-      val dsToMaxWindow = allDsToMaxWindow.get(rule.getRuleID)
+      val dsToMaxWindow = rule.getAggregatorFun.groupBy(_.getDatasource).mapValues(_.maxBy(_.getWindow)).values
 
       cleanDetailState(time, dsToMaxWindow)
 
@@ -108,8 +105,8 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
 
         postAggFunList.foreach(fun => {
 
-          // 如果方法所需要的 前聚合数据 aggResultMap 全都有, 则进行当前 postAgg 的计算,并加入 aggResultMap
-          if (fun.getFields.map(_.getFieldName.split(",")).forall(aggResultMap.containsKey)) {
+          // 如果方法所需要的 前聚合数据 aggResultMap 全都有, 则进行当前 postAgg 的计算,并加入 aggResultMap\
+          if (fun.getFields.flatMap(_.getFieldName.split(",")).forall(aggResultMap.containsKey)) {
 
             // 从每个 aggResultMap 中 找到并计算每个 field 随对应的值
             val fieldsValueMap = fun.getFields
@@ -152,10 +149,11 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
 
       }
 
+      //      logger.info(aggResultMap.toString)
+
       // 聚合操作完成完成 aggResultMap 装填完成
 
       val selectors = getSelector(alarmRule)
-
 
       // 确定别名所要对比的时间,或者要保存的 '单个周期时长' (预警需要保存七个周期时长)
       val selectorToMap = selectors.map(selector => {
@@ -188,6 +186,8 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
           .filter(_._2 == groupingNameList.size)
           .keys.toList
 
+        //        val allGroupingName = groupingNameList.flatMap(_.split(",")).distinct
+
         val alarmDataList = aggResultMap.flatMap(entry => {
           entry._2.map(item => {
             (entry._1, item._1, item._2)
@@ -207,20 +207,40 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
             })
           })
 
-        logger.info("alarmDataList : {}", alarmDataList.toList)
+        //        logger.info("alarmDataList : {}", alarmDataList.toList)
+
+        val rules = ctx.getBroadcastState(StateDescriptor.ruleState)
+          .immutableEntries()
+          .map(_.getValue)
+          .filter(rule => "start".equalsIgnoreCase(rule.getRuleState))
+
+        val customs = getCustoms(rules)
 
         alarmDataList.filter(alarmFilter(time, _, alarmRule))
-          .foreach(map => {
-            val result = new JSONObject()
-            result.put("ruleId", rule.getRuleID)
-            result.put("appName", appName)
-            result.put("tags", rule.getTags)
-            result.put("sink", rule.getSink)
-            val alarmRule = JSON.parseObject(rule.getAlarmRule.toJSONString)
-            reformAlarmRule(alarmRule, map, time)
-            result.put("alarmRule", alarmRule)
+          .map(item => {
+            val allGroupingName = new JSONObject()
+            item.values.map(_._1)
+              .map(JSON.parseObject)
+              .foreach(json => json.foreach(obj => allGroupingName.put(obj._1, obj._2)))
+            (allGroupingName, item)
+          }).foreach(tuple => {
+          val result = new JSONObject()
+          result.put("ruleId", rule.getRuleID)
+          result.put("filters", tuple._1)
+          result.put("appName", appName)
+          result.put("tags", rule.getTags)
+          result.put("sink", rule.getSink)
+          result.put("category", rule.getCategory)
+          val alarmRule = JSON.parseObject(rule.getAlarmRule.toJSONString)
+          reformAlarmRule(alarmRule, tuple._2, time)
+          result.put("alarmRule", alarmRule)
+          //          logger.info("customs : {}", customs)
+          if (screenAlarmData(result, customs)) {
             out.collect(result)
-          })
+          } else {
+            logger.info("result : {}", result)
+          }
+        })
 
       }
 
@@ -315,7 +335,8 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
     val result = ComputeEnum.fromString(operator) match {
       case ComputeEnum.addition => firstValue.toDouble + secondValue.toDouble
       case ComputeEnum.subtraction => firstValue.toDouble - secondValue.toDouble
-      case ComputeEnum.division => df.format(firstValue.toDouble / secondValue.toDouble).toDouble
+      case ComputeEnum.division =>
+        if (secondValue.toDouble == 0) 0 else df.format(firstValue.toDouble / secondValue.toDouble).toDouble
       case ComputeEnum.multiplication => firstValue.toDouble + secondValue.toDouble
     }
     result.toString
@@ -324,7 +345,7 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
   def getRelationAliasName(aliasName: String, rule: Rule): String = {
     val relationPostAggFun = rule.getPostAggregatorFun.filter(_.getAliasName.equals(aliasName))
     if (relationPostAggFun.nonEmpty) {
-      relationPostAggFun.get(0).getAliasName.split(",")(0)
+      relationPostAggFun.get(0).getFields.get(0).getFieldName.split(",")(0)
     } else {
       aliasName
     }
@@ -482,7 +503,7 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
         val alarmSelector = alarmData(alarmColumn)
         val window = alarmSelector._3
         alarm.put("value", alarmSelector._2)
-        alarm.put("groupName", JSON.parseObject(alarmSelector._1))
+        //        alarm.put("groupName", JSON.parseObject(alarmSelector._1))
         alarm.put("history", getHistoryData(alarmColumn, alarmSelector._1, window, time))
     }
   }
@@ -510,6 +531,77 @@ class DynamicAggregationFunction extends KeyedBroadcastProcessFunction[DynamicKe
       })
     }
     result
+  }
+
+
+  def getCustoms(rules: Iterable[Rule]): HashMap[String, Map[Map[String, String], Int]] = {
+
+    val customs = new HashMap[String, Map[Map[String, String], Int]]
+
+    rules.foreach(rule => {
+
+      // 生成数据的拦截条件
+      val ruleId = rule.getRuleID
+      val category = rule.getCategory
+      // 先对特定的 大类型 进行初始化
+
+      if (!customs.contains(category)) {
+        customs.put(category, new HashMap[Map[String, String], Int]())
+      }
+
+      val filters = rule.getFilters
+      if (filters.size() != 0) {
+        customs.get(category).put(filters, ruleId)
+      }
+
+    })
+
+    customs
+  }
+
+  /**
+   *
+   * @param value
+   * @return
+   */
+  def screenAlarmData(value: JSONObject, customs: HashMap[String, Map[Map[String, String], Int]]): Boolean = {
+    val category = value.getString("category")
+    if (customs.contains(category)) {
+      val appName = value.getString("appName")
+
+      // 是否有对当前 appName 的限制   如果有
+      val appNameCustoms = customs.get(category).filter(_._1.get("appName").equals(appName))
+      if (appNameCustoms.nonEmpty) {
+
+        val ruleId = value.getInteger("ruleId")
+        val groupingName = value.getJSONObject("filters")
+
+        // 是是否有 进一层次的限制
+        val target = appNameCustoms.filter(_._1.size() > 1)
+          .filter(entry => {
+            entry._1.exists(item => {
+              groupingName.containsKey(item._1) && item._2.split(",").contains(groupingName.get(item._1))
+            })
+          })
+          .values
+
+        // 如果有 则包含当前 ruleId
+        if (target.nonEmpty) {
+          target.contains(ruleId)
+        } else {
+          //如果没有 则和当前 appName 限制一致
+          appNameCustoms.filter(_._1.size() == 1).values.contains(ruleId)
+        }
+
+      } else {
+        true
+      }
+
+
+    } else {
+      false
+    }
+
   }
 
 }

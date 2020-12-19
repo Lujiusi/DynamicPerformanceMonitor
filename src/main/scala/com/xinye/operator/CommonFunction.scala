@@ -3,7 +3,7 @@ package com.xinye.operator
 import com.alibaba.fastjson.JSONObject
 import com.xinye.base.Rule
 import com.xinye.base.Rule.AggregatorFun
-import com.xinye.enums.impl.{AggregatorFunctionType, LimitOperatorEnum, LogicEnum, RuleSateEnum}
+import com.xinye.enums.impl.{AggregatorFunctionType, LimitOperatorEnum, LogicEnum, RuleStateEnum}
 
 import scala.collection.JavaConversions._
 import java.util.Map
@@ -98,8 +98,8 @@ object CommonFunction {
       case LimitOperatorEnum.GREATER => value.toDouble < target.toDouble
       case LimitOperatorEnum.GREATER_EQUAL => value.toDouble <= target.toDouble
       case LimitOperatorEnum.IN => target.split(",").contains(value)
-      case LimitOperatorEnum.NOTIN => !target.split(",").contains(value)
-      case LimitOperatorEnum.REGEX => target.r.findFirstIn(value).isDefined
+      case _ => println(value + " : " + target + " : " + operator)
+        false
     }
   }
 
@@ -127,8 +127,8 @@ object CommonFunction {
   def ruleIsAvailable(rule: Rule): Boolean = {
     var tag: Boolean = false
     if (rule != null) {
-      tag = RuleSateEnum.fromString(rule.getRuleState) match {
-        case RuleSateEnum.START => true
+      tag = RuleStateEnum.fromString(rule.getRuleState) match {
+        case RuleStateEnum.START => true
         case _ => false
       }
     }

@@ -15,8 +15,6 @@ object LimitOperatorEnum extends BaseEnum {
   val GREATER: LimitOperatorEnum.Value = Value(">")
   val LESS: LimitOperatorEnum.Value = Value("<")
   val IN: LimitOperatorEnum.Value = Value
-  val NOTIN: LimitOperatorEnum.Value = Value
-  val REGEX: LimitOperatorEnum.Value = Value
   val CHAIN_UP: LimitOperatorEnum.Value = Value
   val CHAIN_DOWN: LimitOperatorEnum.Value = Value
   val YOY_HOUR_UP: LimitOperatorEnum.Value = Value

@@ -24,15 +24,12 @@ import org.apache.flink.streaming.api.functions.sink.{RichSinkFunction, SinkFunc
 import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
 import org.apache.kafka.common.serialization.StringSerializer
-import org.slf4j.{Logger, LoggerFactory}
 
 /**
  * @author daiwei04@xinye.com
  * @since 2020/11/19 11:23
  */
 class Dispatcher {
-
-  private final val logger: Logger = LoggerFactory.getLogger(classOf[Dispatcher])
 
   @transient
   @BeanProperty var prop: Properties = _
@@ -45,6 +42,7 @@ class Dispatcher {
   def run(): Unit = {
 
     val env: StreamExecutionEnvironment = StreamExecutionEnvironment.getExecutionEnvironment
+    env.setParallelism(1)
     val backend = new FsStateBackend(prop.getProperty(ConfConstant.CHECKPOINT_DIR), true)
     env.setStateBackend(backend)
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
@@ -62,6 +60,8 @@ class Dispatcher {
     // 获取 数据流
     val dataStream: DataStream[Map[String, String]] = env.addSource(getDataSource(prop)).rebalance
 
+    //    dataStream.print()
+
     val keyedStream: DataStream[(DynamicKey, Map[String, String])] = dataStream.connect(ruleStream)
       .process(new DynamicKeyedMapFunction)
       .uid("DynamicKeyed")
@@ -75,42 +75,50 @@ class Dispatcher {
       .connect(ruleStream)
       .process(new DynamicAggregationFunction)
 
-    aggregateStream.print("alarmMessage:")
+    aggregateStream.print("alarmMessage: ")
 
-    aggregateStream.addSink(new RichSinkFunction[JSONObject] {
 
-      private val sinkMap: Map[String, KafkaProducer[String, String]] = new HashMap[String, KafkaProducer[String, String]]()
+    //    aggregateStream
+    //      .keyBy(_.getString("category"))
+    //      .connect(ruleStream)
+    //      .process(new DynamicScreenAlarmData)
+    //      .print("alarmMessage:")
 
-      private def getKafkaProducer(bs: String): KafkaProducer[String, String] = {
-        if (sinkMap.get(bs) != null) {
-          sinkMap.put(bs, createKafkaProducer(bs))
-        }
-        sinkMap.get(bs)
-      }
 
-      def createKafkaProducer(bs: String): KafkaProducer[String, String] = {
-        val sinkProp = new Properties()
-        sinkProp.put("bootstrap.servers", bs)
-        sinkProp.put("acks", "1")
-        sinkProp.put("key.serializer", classOf[StringSerializer].getName)
-        sinkProp.put("value.serializer", classOf[StringSerializer].getName)
-        new KafkaProducer[String, String](sinkProp)
-      }
-
-      override def invoke(value: JSONObject, context: SinkFunction.Context[_]): Unit = {
-        val sink = value.get("sink").asInstanceOf[JSONObject]
-        value.remove("sink")
-        val bs = sink.getString("bootstrap.servers")
-        val topic = sink.getString("topic")
-        val kafkaProducer = getKafkaProducer(bs)
-        kafkaProducer.send(new ProducerRecord(topic, value.toJSONString))
-      }
-
-      override def close(): Unit = {
-        sinkMap.values().foreach(_.close())
-      }
-
-    })
+    //    aggregateStream.addSink(new RichSinkFunction[JSONObject] {
+    //
+    //      private val sinkMap: Map[String, KafkaProducer[String, String]] = new HashMap[String, KafkaProducer[String, String]]()
+    //
+    //      private def getKafkaProducer(bs: String): KafkaProducer[String, String] = {
+    //        if (sinkMap.get(bs) == null) {
+    //          sinkMap.put(bs, createKafkaProducer(bs))
+    //        }
+    //        sinkMap.get(bs)
+    //      }
+    //
+    //      def createKafkaProducer(bs: String): KafkaProducer[String, String] = {
+    //        val sinkProp = new Properties()
+    //        sinkProp.put("bootstrap.servers", bs)
+    //        sinkProp.put("acks", "1")
+    //        sinkProp.put("key.serializer", classOf[StringSerializer].getName)
+    //        sinkProp.put("value.serializer", classOf[StringSerializer].getName)
+    //        new KafkaProducer[String, String](sinkProp)
+    //      }
+    //
+    //      override def invoke(value: JSONObject, context: SinkFunction.Context[_]): Unit = {
+    //        val sink = value.get("sink").asInstanceOf[JSONObject]
+    //        value.remove("sink")
+    //        val bs = sink.getString("bootstrap.servers")
+    //        val topic = sink.getString("topic")
+    //        val kafkaProducer = getKafkaProducer(bs)
+    //        kafkaProducer.send(new ProducerRecord(topic, value.toJSONString))
+    //      }
+    //
+    //      override def close(): Unit = {
+    //        sinkMap.values().foreach(_.close())
+    //      }
+    //
+    //    })
 
     env.execute(prop.getProperty(ConfConstant.JOB_NAME))
 
