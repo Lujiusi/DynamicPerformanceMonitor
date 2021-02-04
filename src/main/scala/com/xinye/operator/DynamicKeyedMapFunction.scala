@@ -23,12 +23,15 @@ class DynamicKeyedMapFunction extends BroadcastProcessFunction[Map[String, Strin
           if (CommonFunction.ruleIsAvailable(rule)) {
             // appName 为空表示所有 或者 appName 包含当前AppName 且满足 字符串的字段
             if (CommonFunction.filter(value, rule.getFilters)
-              && rule.getAggregatorFun.map(_.getDatasource).contains(value.get("datasource"))) {
+              //              && rule.getAggregatorFun.map(_.getDatasource).contains(value.get("datasource"))
+              && value.get("timestamp").toLong < System.currentTimeMillis() + 1000 * 60 * 12) {
               val key = new JSONObject()
               key.put("appName", value.get("appName"))
+              key.put("env", value.get("env"))
               val result = new HashMap[String, String](value)
               // 移除datasource,算是减少状态大小
               result.remove("appName")
+              result.remove("env")
               out.collect((DynamicKey(rule.getRuleID, key.toJSONString), result))
             }
           }

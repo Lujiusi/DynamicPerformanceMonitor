@@ -4,13 +4,12 @@ import com.alibaba.fastjson.JSONObject
 import com.xinye.base.Rule
 import com.xinye.constant.ConfConstant
 import com.xinye.pojo.DynamicKey
-import com.xinye.operator.{DynamicAggregationFunction, DynamicKeyedMapFunction}
+import com.xinye.operator.{DynamicAggregationFunction, DynamicKeyedMapFunction, DynamicSinkFunction}
 import com.xinye.schema.{MetricToMapSchema, RuleSchema}
 import com.xinye.state.StateDescriptor
 
 import scala.beans.BeanProperty
-import scala.collection.JavaConversions._
-import java.util.{HashMap, Map, Properties}
+import java.util.{Map, Properties}
 import org.apache.flink.api.common.serialization.SerializationSchema
 import org.apache.flink.runtime.state.filesystem.FsStateBackend
 import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer010, KafkaDeserializationSchema}
@@ -20,10 +19,7 @@ import org.apache.flink.streaming.api.functions.timestamps.BoundedOutOfOrderness
 import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment, createTypeInformation}
 import org.apache.flink.streaming.api.environment.CheckpointConfig
 import org.apache.flink.streaming.api.TimeCharacteristic
-import org.apache.flink.streaming.api.functions.sink.{RichSinkFunction, SinkFunction}
 import org.apache.flink.streaming.api.windowing.time.Time
-import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
-import org.apache.kafka.common.serialization.StringSerializer
 
 /**
  * @author daiwei04@xinye.com
@@ -42,7 +38,7 @@ class Dispatcher {
   def run(): Unit = {
 
     val env: StreamExecutionEnvironment = StreamExecutionEnvironment.getExecutionEnvironment
-    env.setParallelism(1)
+    //    env.setParallelism(1)
     val backend = new FsStateBackend(prop.getProperty(ConfConstant.CHECKPOINT_DIR), true)
     env.setStateBackend(backend)
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
@@ -65,7 +61,7 @@ class Dispatcher {
     val keyedStream: DataStream[(DynamicKey, Map[String, String])] = dataStream.connect(ruleStream)
       .process(new DynamicKeyedMapFunction)
       .uid("DynamicKeyed")
-      .name("Dynamic Keyed Function")
+      .name("DynamicKeyedFunction")
 
     val aggregateStream: DataStream[JSONObject] = keyedStream
       .assignTimestampsAndWatermarks(new BoundedOutOfOrdernessTimestampExtractor[(DynamicKey, Map[String, String])](Time.minutes(1)) {
@@ -74,51 +70,15 @@ class Dispatcher {
       .keyBy(_._1)
       .connect(ruleStream)
       .process(new DynamicAggregationFunction)
+      .uid("DynamicAggregate")
+      .name("DynamicAggregationFunction")
 
     aggregateStream.print("alarmMessage: ")
 
-
-    //    aggregateStream
-    //      .keyBy(_.getString("category"))
-    //      .connect(ruleStream)
-    //      .process(new DynamicScreenAlarmData)
-    //      .print("alarmMessage:")
-
-
-    //    aggregateStream.addSink(new RichSinkFunction[JSONObject] {
-    //
-    //      private val sinkMap: Map[String, KafkaProducer[String, String]] = new HashMap[String, KafkaProducer[String, String]]()
-    //
-    //      private def getKafkaProducer(bs: String): KafkaProducer[String, String] = {
-    //        if (sinkMap.get(bs) == null) {
-    //          sinkMap.put(bs, createKafkaProducer(bs))
-    //        }
-    //        sinkMap.get(bs)
-    //      }
-    //
-    //      def createKafkaProducer(bs: String): KafkaProducer[String, String] = {
-    //        val sinkProp = new Properties()
-    //        sinkProp.put("bootstrap.servers", bs)
-    //        sinkProp.put("acks", "1")
-    //        sinkProp.put("key.serializer", classOf[StringSerializer].getName)
-    //        sinkProp.put("value.serializer", classOf[StringSerializer].getName)
-    //        new KafkaProducer[String, String](sinkProp)
-    //      }
-    //
-    //      override def invoke(value: JSONObject, context: SinkFunction.Context[_]): Unit = {
-    //        val sink = value.get("sink").asInstanceOf[JSONObject]
-    //        value.remove("sink")
-    //        val bs = sink.getString("bootstrap.servers")
-    //        val topic = sink.getString("topic")
-    //        val kafkaProducer = getKafkaProducer(bs)
-    //        kafkaProducer.send(new ProducerRecord(topic, value.toJSONString))
-    //      }
-    //
-    //      override def close(): Unit = {
-    //        sinkMap.values().foreach(_.close())
-    //      }
-    //
-    //    })
+    val dynamicSinkFunction = aggregateStream.addSink(new DynamicSinkFunction)
+      .setParallelism(1)
+      .uid("DynamicSink")
+      .name("DynamicSinkFunction")
 
     env.execute(prop.getProperty(ConfConstant.JOB_NAME))
 
@@ -126,16 +86,16 @@ class Dispatcher {
 
   def getRuleSource(prop: Properties): FlinkKafkaConsumer010[Rule] = {
     val properties = new Properties()
-    properties.setProperty("bootstrap.servers", "10.114.24.226:9092,10.114.24.232:9092")
-    properties.setProperty("group.id", ConfConstant.KAFKA_GROUP_ID)
-    getSource(prop.getProperty("source.rule.topic"), new RuleSchema(), properties)
+    properties.setProperty("bootstrap.servers", prop.getProperty(ConfConstant.SOURCE_RULE_KAFKA_BROKERS))
+    properties.setProperty("group.id", prop.getProperty(ConfConstant.KAFKA_GROUP_ID))
+    getSource(prop.getProperty(ConfConstant.SOURCE_RULE_TOPIC), new RuleSchema(), properties)
   }
 
   def getDataSource(prop: Properties): FlinkKafkaConsumer010[Map[String, String]] = {
     val properties = new Properties()
-    properties.setProperty("bootstrap.servers", prop.getProperty(ConfConstant.SOURCE_KAFKA_BROKERS))
+    properties.setProperty("bootstrap.servers", prop.getProperty(ConfConstant.SOURCE_DATA_KAFKA_BROKERS))
     properties.setProperty("group.id", prop.getProperty(ConfConstant.KAFKA_GROUP_ID))
-    getSource(prop.getProperty(ConfConstant.SOURCE_KAFKA_TOPIC), new MetricToMapSchema(), properties)
+    getSource(prop.getProperty(ConfConstant.SOURCE_DATA_TOPIC), new MetricToMapSchema(), properties)
   }
 
   def getSource[T](topic: String, schema: KafkaDeserializationSchema[T] with SerializationSchema[T], prop: Properties): FlinkKafkaConsumer010[T] = {

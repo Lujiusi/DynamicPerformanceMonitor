@@ -1,27 +1,67 @@
 {
-  "ruleId": "1",
-  "category": "jvm",
   "aggregatorFun": [
     {
       "aggregatorFunctionType": "sum",
-      "aliasName": "group_sum",
-      "computeColumn": "count",
-      "datasource": "perf.server.out_call.fast_compass",
-      "window": 2,
+      "aliasName": "out_call_error_count_sum",
+      "computeColumn": "error_count",
+      "datasource": "perf.server.endpoint.out_app.fast_compass",
       "filters": {},
-      "groupingNames": [
-        "host"
-      ]
+      "groupingKeyNames": [
+        "out_endpoint"
+      ],
+      "window": 1
+    },
+    {
+      "aggregatorFunctionType": "sum",
+      "aliasName": "out_call_count_sum",
+      "computeColumn": "count",
+      "datasource": "perf.server.endpoint.out_app.fast_compass",
+      "filters": {},
+      "groupingKeyNames": [
+        "out_endpoint"
+      ],
+      "window": 1
     }
   ],
-  "postAggregatorFun": [
-  ],
   "alarmRule": {
-    "type": "selector",
-    "alarmColumn": "group_sum",
-    "compareOperator": ">",
-    "target": 100
+    "feilds": [
+      {
+        "alarmColumn": "out_call_error_ratio_sum",
+        "compareOperator": ">=",
+        "target": 1,
+        "type": "selector"
+      }
+    ],
+    "type": "and"
   },
-  "filters": {},
-  "ruleState": "start"
+  "alertName": "test",
+  "category": "out_call",
+  "filters": {
+    "appName": "",
+    "env": "fat"
+  },
+  "postaggregatorFun": [
+    {
+      "aliasName": "out_call_error_ratio",
+      "fields": [
+        {
+          "feildName": "out_call_error_count"
+        },
+        {
+          "feildName": "out_call_count"
+        }
+      ],
+      "operator": "/"
+    }
+  ],
+  "ruleId": "8647da99-243b-476a-a970-d4d2e95aecb5",
+  "ruleState": "start",
+  "sink": {
+    "bootstrapServers": "10.114.41.19:9092,10.114.41.34:9092,10.114.41.67:9092",
+    "topic": "diting_alerts"
+  },
+  "tags": {
+    "env": "fat",
+    "trigger": "null"
+  }
 }

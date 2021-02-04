@@ -5,6 +5,7 @@ import com.xinye.base.Rule
 import com.xinye.base.Rule.AggregatorFun
 import com.xinye.enums.impl.{AggregatorFunctionType, LimitOperatorEnum, LogicEnum, RuleStateEnum}
 
+import java.text.DecimalFormat
 import scala.collection.JavaConversions._
 import java.util.Map
 
@@ -15,6 +16,8 @@ import java.util.Map
  * @since 2020/12/11 22:18
  */
 object CommonFunction {
+
+  val df = new DecimalFormat("#.0000")
 
   /**
    * 将选出的数据集合 按照分组 进行计算
@@ -31,7 +34,7 @@ object CommonFunction {
       filterMetrics = metricList.filter(metric => filter(metric, filters))
     }
     filterMetrics.groupBy(metric => {
-      val groupingNames = fun.getGroupingNames
+      val groupingNames = fun.getGroupingKeyNames
       val jsonKey = new JSONObject()
       if (groupingNames != null) {
         groupingNames.foreach(name => {
@@ -46,8 +49,10 @@ object CommonFunction {
             metricIter.map(_.get(fun.getComputeColumn).toDouble).sum
           case AggregatorFunctionType.COUNT =>
             metricIter.size
-          case AggregatorFunctionType.AVG =>
-            metricIter.map(_.get(fun.getComputeColumn).toDouble).sum / metricIter.size
+          case AggregatorFunctionType.AVERAGE =>
+            if (metricIter.nonEmpty) {
+              df.format(metricIter.map(_.get(fun.getComputeColumn).toDouble).sum / metricIter.size).toDouble
+            } else 0
           case AggregatorFunctionType.MAX =>
             metricIter.map(_.get(fun.getComputeColumn).toDouble).max
           case AggregatorFunctionType.MIN =>
@@ -113,7 +118,7 @@ object CommonFunction {
   def filter(value: Map[String, String], filters: Map[String, String]): Boolean = {
     if (filters != null) {
       filters.forall(entry => {
-        entry._2.split(",").contains(value.get(entry._1))
+        entry._2.split(",").contains(value.get(entry._1)) || "".equalsIgnoreCase(entry._2)
       })
     } else true
   }

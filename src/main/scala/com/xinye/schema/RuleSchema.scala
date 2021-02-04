@@ -8,6 +8,7 @@ import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.streaming.connectors.kafka.KafkaDeserializationSchema
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.slf4j.{Logger, LoggerFactory}
+import scala.collection.JavaConversions._
 
 /**
  * @author daiwei04@xinye.com
@@ -31,13 +32,21 @@ class RuleSchema extends KafkaDeserializationSchema[Rule] with SerializationSche
     var rule: Rule = null
     try {
       rule = JSON.parseObject(message, classOf[Rule])
+      rule.getFilters
+        .filter(entry => entry._1 == null || entry._2.isEmpty)
+        .keys
+        .foreach(rule.getFilters.remove)
       logger.info("Rule Received：{}", rule)
     } catch {
       case e: Exception =>
         logger.error("格式化异常： " + message)
         e.printStackTrace()
     }
-    rule
+    if (rule.getRuleID != null && rule.getSink != null && rule.getAlarmRule != null) {
+      rule
+    } else {
+      null
+    }
   }
 
   override def serialize(element: Rule): Array[Byte] = element.toString.getBytes(charset)

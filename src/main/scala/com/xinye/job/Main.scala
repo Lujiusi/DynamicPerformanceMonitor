@@ -11,7 +11,7 @@ import com.xinye.dispatcher.Dispatcher
  */
 object Main {
 
-  private val in: InputStream = this.getClass.getClassLoader.getResourceAsStream("job-test.properties")
+  private val in: InputStream = this.getClass.getClassLoader.getResourceAsStream("job-ol.properties")
   private val prop = new Properties()
 
 

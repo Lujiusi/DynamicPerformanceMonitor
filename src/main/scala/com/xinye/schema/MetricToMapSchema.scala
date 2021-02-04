@@ -97,13 +97,13 @@ class MetricToMapSchema extends KafkaDeserializationSchema[Map[String, String]] 
             qFlag = if (qFlag) false else true
           }
           if (c == ',' && qFlag) {
-            result.put(k.toString, v.toString)
+            result.put(k.toString, v.toString.trim)
             k.delete(0, k.length)
             v.delete(0, v.length)
             kvFlag = true
           } else if (i == msg.indices.max) {
             v.append(c)
-            result.put(k.toString, v.toString)
+            result.put(k.toString, v.toString.trim)
           } else {
             v.append(c)
           }

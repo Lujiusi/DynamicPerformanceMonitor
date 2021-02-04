@@ -8,6 +8,6 @@ import com.xinye.enums.BaseEnum
  */
 object AggregatorFunctionType extends BaseEnum {
 
-  val SUM, AVG, MIN, MAX, COUNT = Value
+  val SUM, AVERAGE, MIN, MAX, COUNT = Value
 
 }

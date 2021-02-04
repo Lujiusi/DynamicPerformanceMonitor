@@ -13,7 +13,8 @@ import java.util.Map;
  */
 public class Rule {
 
-    private Integer ruleID;
+    private String ruleID;
+    private String alertName;
     private JSONObject tags;
     private JSONObject sink;
     private String ruleState;
@@ -23,12 +24,20 @@ public class Rule {
     private List<PostAggregatorFun> postAggregatorFun;
     private JSONObject alarmRule;
 
-    public Integer getRuleID() {
+    public String getRuleID() {
         return ruleID;
     }
 
-    public void setRuleID(Integer ruleID) {
+    public void setRuleID(String ruleID) {
         this.ruleID = ruleID;
+    }
+
+    public String getAlertName() {
+        return alertName;
+    }
+
+    public void setAlertName(String alertName) {
+        this.alertName = alertName;
     }
 
     public JSONObject getTags() {
@@ -98,7 +107,8 @@ public class Rule {
     @Override
     public String toString() {
         return "Rule{" +
-                "ruleID=" + ruleID +
+                "ruleID='" + ruleID + '\'' +
+                ", alertName='" + alertName + '\'' +
                 ", tags=" + tags +
                 ", sink=" + sink +
                 ", ruleState='" + ruleState + '\'' +
@@ -110,61 +120,10 @@ public class Rule {
                 '}';
     }
 
-    public static class Filter {
-
-        private String key;
-        private String operator;
-        private Object value;
-        private String filterType;
-
-        @Override
-        public String toString() {
-            return "Filter{" +
-                    "key='" + key + '\'' +
-                    ", operator='" + operator + '\'' +
-                    ", value=" + value +
-                    ", filterType='" + filterType + '\'' +
-                    '}';
-        }
-
-        public String getFilterType() {
-            return filterType;
-        }
-
-        public void setFilterType(String filterType) {
-            this.filterType = filterType;
-        }
-
-        public String getKey() {
-            return key;
-        }
-
-        public void setKey(String key) {
-            this.key = key;
-        }
-
-        public String getOperator() {
-            return operator;
-        }
-
-        public void setOperator(String operator) {
-            this.operator = operator;
-        }
-
-        public Object getValue() {
-            return value;
-        }
-
-        public void setValue(Object value) {
-            this.value = value;
-        }
-
-    }
-
     public static class AggregatorFun {
 
         private JSONObject filters;
-        private List<String> groupingNames;
+        private List<String> groupingKeyNames;
         private String aggregatorFunctionType;
         private String computeColumn;
         private String datasource;
@@ -179,12 +138,12 @@ public class Rule {
             this.aggregatorFunctionType = aggregatorFunctionType;
         }
 
-        public List<String> getGroupingNames() {
-            return groupingNames;
+        public List<String> getGroupingKeyNames() {
+            return groupingKeyNames;
         }
 
-        public void setGroupingNames(List<String> groupingNames) {
-            this.groupingNames = groupingNames;
+        public void setGroupingKeyNames(List<String> groupingKeyNames) {
+            this.groupingKeyNames = groupingKeyNames;
         }
 
         public String getComputeColumn() {
@@ -231,7 +190,7 @@ public class Rule {
         public String toString() {
             return "AggregatorFun{" +
                     "filters=" + filters +
-                    ", groupingNames=" + groupingNames +
+                    ", groupingKeyNames=" + groupingKeyNames +
                     ", aggregatorFunctionType='" + aggregatorFunctionType + '\'' +
                     ", computeColumn='" + computeColumn + '\'' +
                     ", datasource='" + datasource + '\'' +
@@ -286,20 +245,20 @@ public class Rule {
 
     public static class PostFiled {
 
-        private String fieldName;
+        private String feildName;
 
-        public String getFieldName() {
-            return fieldName;
+        public String getFeildName() {
+            return feildName;
         }
 
-        public void setFieldName(String fieldName) {
-            this.fieldName = fieldName;
+        public void setFeildName(String feildName) {
+            this.feildName = feildName;
         }
 
         @Override
         public String toString() {
             return "PostFiled{" +
-                    "fieldName='" + fieldName + '\'' +
+                    "feildName='" + feildName + '\'' +
                     '}';
         }
     }
